@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Daily briefs</h1>
+{% if not days %}
+  <p class="empty">No briefs yet. Run the pipeline to generate today's edition.</p>
+{% endif %}
+<ul class="day-list">
+  {% for d in days %}
+  <li>
+    <a href="{{ d.file }}">{{ d.day }}</a>
+    <span class="count">{{ d.clustered }} stor{{ 'y' if d.clustered == 1 else 'ies' }}
+      {% if d.count > d.clustered %}<span class="merged">· {{ d.count }} articles</span>{% endif %}
+    </span>
+  </li>
+  {% endfor %}
+</ul>
+{% endblock %}

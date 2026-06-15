@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ site_title }}{% endblock %}</title>
+  <link rel="stylesheet" href="{{ static_prefix | default('') }}static/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="{{ static_prefix | default('') }}index.html">{{ site_title }}</a>
+    <span class="generated">updated {{ generated }}</span>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="site-footer">
+    <p>Summaries link to original sources. Personal, non-commercial use.</p>
+  </footer>
+</body>
+</html>

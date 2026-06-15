@@ -1,0 +1,51 @@
+name: Daily macro brief
+
+on:
+  schedule:
+    # 23:00 UTC ≈ 06:00 Bangkok next morning
+    - cron: "0 23 * * *"
+  workflow_dispatch: {}   # allow manual runs
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-brief
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      # Persist the SQLite DB across runs so dedup survives (best-effort).
+      - name: Restore DB cache
+        uses: actions/cache@v4
+        with:
+          path: news.db
+          key: news-db-${{ github.run_id }}
+          restore-keys: news-db-
+
+      - name: Run pipeline
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+        run: python -m src.pipeline
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy site --project-name=macro-brief

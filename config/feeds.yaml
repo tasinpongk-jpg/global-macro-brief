@@ -1,0 +1,58 @@
+# Global-macro RSS feeds (English-only v1).
+# `topic` is a hint; the LLM still classifies each article independently.
+# Verify each URL resolves before relying on it — feeds break and rename.
+
+feeds:
+  # ── Energy / Oil ────────────────────────────────────────────────────────────
+  - name: OilPrice
+    url: https://oilprice.com/rss/main
+    topic: Energy/Oil
+  - name: CNBC Energy
+    url: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=19836768
+    topic: Energy/Oil
+
+  # ── Markets / Macro ─────────────────────────────────────────────────────────
+  - name: Investing.com News
+    url: https://www.investing.com/rss/news.rss
+    topic: Markets
+  - name: CNBC Top News
+    url: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114
+    topic: Markets
+  - name: CNBC Economy
+    url: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20910258
+    topic: Macro/Economy
+  - name: MarketWatch Top Stories
+    url: https://feeds.content.dowjones.io/public/rss/mw_topstories
+    topic: Markets
+
+  # ── Forex / Rates ───────────────────────────────────────────────────────────
+  - name: FXStreet
+    url: https://www.fxstreet.com/rss/news
+    topic: Markets
+  - name: Investing.com Economy
+    url: https://www.investing.com/rss/news_25.rss
+    topic: Macro/Economy
+
+  # ── Central Banks ───────────────────────────────────────────────────────────
+  - name: Federal Reserve Press
+    url: https://www.federalreserve.gov/feeds/press_all.xml
+    topic: Central Banks
+  - name: Federal Reserve Monetary Policy
+    url: https://www.federalreserve.gov/feeds/press_monetary.xml
+    topic: Central Banks
+  - name: ECB Press
+    url: https://www.ecb.europa.eu/rss/press.html
+    topic: Central Banks
+  - name: Bank of England
+    url: https://www.bankofengland.co.uk/rss/news
+    topic: Central Banks
+
+  # ── Gold / Metals / Commodities ─────────────────────────────────────────────
+  - name: Investing.com Commodities
+    url: https://www.investing.com/rss/commodities.rss
+    topic: Gold/Metals
+
+  # ── Thai market (English) ───────────────────────────────────────────────────
+  - name: Bangkok Post Business
+    url: https://www.bangkokpost.com/rss/data/business.xml
+    topic: Thai Markets

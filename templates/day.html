@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}{{ day }} · {{ site_title }}{% endblock %}
+{% block content %}
+<h1>{{ day }}
+  <span class="count">· {{ clustered }} stories
+    {% if count > clustered %}<span class="merged">({{ count }} articles, {{ count - clustered }} merged)</span>{% endif %}
+  </span>
+</h1>
+
+{% if groups %}
+<nav class="topic-nav">
+  {% for topic, items in groups %}
+  <a href="#{{ topic | replace('/', '-') }}">{{ topic }} <span>{{ items | length }}</span></a>
+  {% endfor %}
+</nav>
+{% endif %}
+
+{% for topic, items in groups %}
+<section class="topic" id="{{ topic | replace('/', '-') }}">
+  <h2>{{ topic }}</h2>
+  {% for s in items %}
+  <article class="story sentiment-{{ s.sentiment }}">
+    <details{% if s.max_importance >= 5 %} open{% endif %}>
+      <summary>
+        <span class="imp imp-{{ s.max_importance }}" title="importance {{ s.max_importance }}/5">
+          {%- for _ in range(s.max_importance) %}●{% endfor %}{% for _ in range(5 - s.max_importance) %}○{% endfor -%}
+        </span>
+        <span class="summary-body">
+          <span class="headline">{{ s.headline }}</span>
+          <span class="meta">
+            <span class="source">{{ s.source }}</span>
+            {% if s.size > 1 %}<span class="cluster-badge">+{{ s.size - 1 }} more</span>{% endif %}
+            {% if s.instruments %}
+              <span class="tags">{% for i in s.instruments %}<span class="tag">{{ i }}</span>{% endfor %}</span>
+            {% endif %}
+            <span class="sent">{{ s.sentiment }}</span>
+          </span>
+        </span>
+      </summary>
+      {% if s.bullets %}
+      <ul class="bullets">
+        {% for b in s.bullets %}<li>{{ b }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+      <div class="links">
+        <a class="readmore" href="{{ s.url }}" target="_blank" rel="noopener">{{ s.source }} →</a>
+        {% if s.also %}
+        <span class="also">also covered by:
+          {% for o in s.also %}<a href="{{ o.url }}" target="_blank" rel="noopener">{{ o.source }}</a>{% if not loop.last %} · {% endif %}{% endfor %}
+        </span>
+        {% endif %}
+      </div>
+    </details>
+  </article>
+  {% endfor %}
+</section>
+{% endfor %}
+{% endblock %}
