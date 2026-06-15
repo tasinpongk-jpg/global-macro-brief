@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ day }} · {{ site_title }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="static/dashboard.css">
+</head>
+<body>
+<div class="app">
+
+  <!-- ── Header ─────────────────────────────────────────────────────────── -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">◆</span>
+      <span class="brand-name">{{ site_title }}</span>
+      <span class="live"><span class="dot"></span>LIVE</span>
+    </div>
+    <div class="topbar-right">
+      <label class="day-pick">
+        <span class="cal">▾</span>
+        <select id="daySelect" aria-label="Select date">
+          {% for d in days %}
+          <option value="{{ d.file }}"{% if d.day == day %} selected{% endif %}>{{ d.day }}{% if d.day == days[0].day %} · latest{% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button id="themeToggle" class="icon-btn" aria-label="Toggle theme" title="Toggle light / dark">☾</button>
+    </div>
+  </header>
+
+  <!-- ── Ticker tape ────────────────────────────────────────────────────── -->
+  {% if ticker %}
+  <div class="ticker" aria-hidden="true">
+    <div class="ticker-track">
+      {% for round in [1, 2] %}
+        {% for t in ticker %}
+        <span class="tick tick-{{ t.sentiment }}"><b>{{ t.sym }}</b><i>{{ '▲' if t.sentiment == 'bullish' else '▼' if t.sentiment == 'bearish' else '◆' if t.sentiment == 'mixed' else '–' }}</i></span>
+        {% endfor %}
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ── Tabs ───────────────────────────────────────────────────────────── -->
+  <nav class="tabs" id="tabs">
+    <button class="tab is-active" data-topic="__all__">All<span class="tab-n">{{ total }}</span></button>
+    {% for topic, items in groups %}
+    <button class="tab" data-topic="{{ topic | replace('/', '-') }}">{{ topic }}<span class="tab-n">{{ items | length }}</span></button>
+    {% endfor %}
+  </nav>
+
+  <!-- ── Stories ────────────────────────────────────────────────────────── -->
+  <main class="stage" id="stage">
+    <div class="dateline">
+      <span class="dateline-day">{{ day }}</span>
+      <span class="dateline-meta">{{ total }} stories{% if count > total %} · {{ count }} articles, {{ count - total }} merged{% endif %} · refreshed {{ generated }}</span>
+    </div>
+
+    {% for topic, items in groups %}
+    <section class="topic-pane" data-topic="{{ topic | replace('/', '-') }}">
+      <h2 class="pane-title">{{ topic }} <span>{{ items | length }}</span></h2>
+      <div class="cards">
+        {% for s in items %}
+        <article class="card sent-{{ s.sentiment }}" style="--i: {{ loop.index0 }}">
+          <button class="card-head" aria-expanded="false">
+            <span class="imp" title="importance {{ s.max_importance }}/5">
+              {% for n in range(5) %}<i class="seg{% if n < s.max_importance %} on{% endif %}"></i>{% endfor %}
+            </span>
+            <span class="card-main">
+              <span class="card-headline">{{ s.headline }}</span>
+              <span class="card-meta">
+                <span class="src">{{ s.source }}</span>
+                {% if s.size > 1 %}<span class="chip chip-more">+{{ s.size - 1 }}</span>{% endif %}
+                <span class="chip chip-sent">{{ s.sentiment }}</span>
+                {% for i in s.instruments %}<span class="sym">{{ i }}</span>{% endfor %}
+              </span>
+            </span>
+            <span class="caret">+</span>
+          </button>
+          <div class="card-body">
+            <div class="card-body-inner">
+              {% if s.bullets %}
+              <ul class="bullets">
+                {% for b in s.bullets %}<li>{{ b }}</li>{% endfor %}
+              </ul>
+              {% endif %}
+              <div class="card-links">
+                <a class="readmore" href="{{ s.url }}" target="_blank" rel="noopener">Read on {{ s.source }} ↗</a>
+                {% if s.also %}
+                <span class="also">also: {% for o in s.also %}<a href="{{ o.url }}" target="_blank" rel="noopener">{{ o.source }}</a>{% if not loop.last %}<i>·</i>{% endif %}{% endfor %}</span>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+    {% endfor %}
+
+    {% if not groups %}
+    <div class="empty">No stories for this day yet.</div>
+    {% endif %}
+  </main>
+
+  <footer class="foot">
+    <span>Summaries link to original sources · personal, non-commercial</span>
+  </footer>
+</div>
+<script src="static/app.js"></script>
+</body>
+</html>

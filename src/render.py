@@ -105,7 +105,24 @@ def _topic_groups(stories: list[dict]):
     return out
 
 
-def render_site(conn: sqlite3.Connection, cfg: Config, days: int = 14) -> None:
+def _ticker(groups) -> list[dict]:
+    """Top instruments of the day with their cluster sentiment, for the tape."""
+    flat = [c for _, items in groups for c in items]
+    flat.sort(key=lambda c: c["max_importance"], reverse=True)
+    seen, out = set(), []
+    for c in flat:
+        for sym in c["instruments"]:
+            k = sym.upper()
+            if k in seen:
+                continue
+            seen.add(k)
+            out.append({"sym": sym, "sentiment": c["sentiment"]})
+            if len(out) >= 24:
+                return out
+    return out
+
+
+def render_site(conn: sqlite3.Connection, cfg: Config, days: int = 21) -> None:
     cfg.site_dir.mkdir(parents=True, exist_ok=True)
     if STATIC.exists():
         shutil.copytree(STATIC, cfg.site_dir / "static", dirs_exist_ok=True)
@@ -124,33 +141,38 @@ def render_site(conn: sqlite3.Connection, cfg: Config, days: int = 14) -> None:
     if "undated" in by_day:
         ordered_days.append("undated")
 
+    # Precompute clustered groups + metadata so the date picker can list all days.
+    day_data: dict[str, tuple] = {}
+    days_meta: list[dict] = []
+    for day in ordered_days:
+        groups = _topic_groups(by_day[day])
+        n_clusters = sum(len(items) for _, items in groups)
+        fname = f"{day}.html" if day != "undated" else "undated.html"
+        day_data[day] = (groups, n_clusters, len(by_day[day]), fname)
+        days_meta.append({"day": day, "file": fname, "count": n_clusters})
+
     env = _env()
-    day_tpl = env.get_template("day.html")
-    index_tpl = env.get_template("index.html")
+    dash = env.get_template("dashboard.html")
     generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
-    index_days = []
-    for day in ordered_days:
-        stories = by_day[day]
-        groups = _topic_groups(stories)
-        n_clusters = sum(len(items) for _, items in groups)
-        html = day_tpl.render(
-            site_title=cfg.site_title,
-            day=day,
-            groups=groups,
-            count=len(stories),
-            clustered=n_clusters,
+    def render_day(day: str) -> str:
+        groups, n_clusters, n_stories, _ = day_data[day]
+        return dash.render(
+            site_title=cfg.site_title, day=day, days=days_meta, groups=groups,
+            ticker=_ticker(groups), total=n_clusters, count=n_stories,
             generated=generated,
         )
-        out = cfg.site_dir / (f"{day}.html" if day != "undated" else "undated.html")
-        out.write_text(html, encoding="utf-8")
-        index_days.append({"day": day, "count": len(stories),
-                           "clustered": n_clusters, "file": out.name})
 
-    index_html = index_tpl.render(
-        site_title=cfg.site_title,
-        days=index_days,
-        generated=generated,
-    )
-    (cfg.site_dir / "index.html").write_text(index_html, encoding="utf-8")
-    log.info("Rendered %d day pages -> %s", len(index_days), cfg.site_dir)
+    for day in ordered_days:
+        (cfg.site_dir / day_data[day][3]).write_text(render_day(day), encoding="utf-8")
+
+    # index.html = the most recent day's dashboard (what opens by default).
+    if ordered_days:
+        (cfg.site_dir / "index.html").write_text(
+            render_day(ordered_days[0]), encoding="utf-8")
+    else:
+        (cfg.site_dir / "index.html").write_text(
+            "<!doctype html><meta charset=utf-8><title>Daily Global-Macro Brief</title>"
+            "<body style='font-family:sans-serif;padding:3rem'>No briefs yet.</body>",
+            encoding="utf-8")
+    log.info("Rendered %d day pages + index -> %s", len(ordered_days), cfg.site_dir)
