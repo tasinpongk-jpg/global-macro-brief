@@ -27,9 +27,12 @@ jobs:
       - name: Install deps
         run: pip install -r requirements.txt
 
-      # Persist the SQLite DB across runs so dedup survives (best-effort).
+      # Persist the SQLite DB across runs so dedup survives and each daily run
+      # only summarizes *new* articles. Split restore/save so the DB is saved
+      # even if a later step (e.g. deploy) fails — the cold summarize cost is
+      # then paid only once.
       - name: Restore DB cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: news.db
           key: news-db-${{ github.run_id }}
@@ -43,9 +46,16 @@ jobs:
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
         run: python -m src.pipeline
 
+      - name: Save DB cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: news.db
+          key: news-db-${{ github.run_id }}
+
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy site --project-name=macro-brief
+          command: pages deploy site --project-name=macro-brief --commit-dirty=true
