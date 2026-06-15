@@ -105,6 +105,22 @@ def _topic_groups(stories: list[dict]):
     return out
 
 
+def _pretty_date(day: str) -> str:
+    try:
+        dt = datetime.strptime(day, "%Y-%m-%d")
+        return f"{dt.strftime('%B')} {dt.day}, {dt.year}"
+    except ValueError:
+        return day
+
+
+def _tally(groups) -> dict:
+    counts = {"bullish": 0, "bearish": 0, "mixed": 0, "neutral": 0}
+    for _, items in groups:
+        for c in items:
+            counts[c["sentiment"]] = counts.get(c["sentiment"], 0) + 1
+    return counts
+
+
 def _ticker(groups) -> list[dict]:
     """Top instruments of the day with their cluster sentiment, for the tape."""
     flat = [c for _, items in groups for c in items]
@@ -149,7 +165,8 @@ def render_site(conn: sqlite3.Connection, cfg: Config, days: int = 21) -> None:
         n_clusters = sum(len(items) for _, items in groups)
         fname = f"{day}.html" if day != "undated" else "undated.html"
         day_data[day] = (groups, n_clusters, len(by_day[day]), fname)
-        days_meta.append({"day": day, "file": fname, "count": n_clusters})
+        days_meta.append({"day": day, "file": fname, "count": n_clusters,
+                          "display": _pretty_date(day)})
 
     env = _env()
     dash = env.get_template("dashboard.html")
@@ -158,8 +175,9 @@ def render_site(conn: sqlite3.Connection, cfg: Config, days: int = 21) -> None:
     def render_day(day: str) -> str:
         groups, n_clusters, n_stories, _ = day_data[day]
         return dash.render(
-            site_title=cfg.site_title, day=day, days=days_meta, groups=groups,
-            ticker=_ticker(groups), total=n_clusters, count=n_stories,
+            site_title=cfg.site_title, day=day, day_display=_pretty_date(day),
+            days=days_meta, groups=groups, ticker=_ticker(groups),
+            tally=_tally(groups), total=n_clusters, count=n_stories,
             generated=generated,
         )
 

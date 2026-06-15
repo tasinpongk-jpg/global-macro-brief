@@ -36,9 +36,13 @@ _SYSTEM = (
     "'Energy/Oil' = crude/WTI/Brent/natgas/OPEC; 'Gold/Metals' = gold/silver/"
     "copper/precious & base metals; 'Central Banks' = Fed/ECB/BoE/BoJ/rate "
     "decisions/monetary policy; 'Macro/Economy' = inflation/GDP/jobs/trade/"
-    "economic data; 'Geopolitics' = war/sanctions/elections/diplomacy; "
-    "'Markets' = equities/indices/bonds/FX/crypto moves; 'Thai Markets' = "
-    "Thailand/SET/THB; use 'Other' ONLY if none genuinely fit), "
+    "tariffs/economic data; 'Geopolitics' = war/sanctions/elections/diplomacy; "
+    "'Markets' = equity indices/bonds/FX/broad market moves; 'Crypto' = "
+    "bitcoin/ethereum/stablecoins/digital assets/crypto regulation; 'Tech/AI' = "
+    "AI/semiconductors/software/space/big-tech & technology developments; "
+    "'Companies' = a single company's earnings/M&A/management/products (not a "
+    "broad market move); 'Thai Markets' = Thailand/SET/THB; use 'Other' ONLY "
+    "for genuinely off-topic items (sports/lifestyle/human-interest)), "
     "sentiment (one of: bullish, bearish, neutral, mixed — for the asset/market "
     "the story is about), "
     "importance (integer 1-5: 5 = market-moving/global; 4 = significant; "
@@ -104,7 +108,7 @@ def summarize(title: str, text: str, feed_topic: str, chain: list[str]) -> dict 
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.2,
-                max_tokens=600,
+                max_tokens=900,
                 response_format={"type": "json_object"},
                 # Retry transient rate-limit/timeout errors with backoff
                 # (respects Retry-After) before falling through to the next

@@ -106,6 +106,54 @@ a:hover { text-decoration: underline; }
 }
 .icon-btn:hover { border-color: var(--amber); color: var(--amber); transform: translateY(-1px); }
 
+/* ── Search ────────────────────────────────────────────────────────────── */
+.search {
+  flex: 1; max-width: 460px; margin: 0 1.2rem;
+  display: flex; align-items: center; gap: .45rem;
+  border: 1px solid var(--line); border-radius: 7px; background: var(--panel);
+  padding: 0 .55rem; transition: border-color .2s, box-shadow .2s;
+}
+.search:focus-within { border-color: var(--amber);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 14%, transparent); }
+.search-ico { color: var(--muted); font-size: .95rem; }
+.search input {
+  flex: 1; min-width: 0; border: 0; background: transparent; color: var(--text);
+  font-family: "Archivo", sans-serif; font-size: .82rem; padding: .5rem 0; outline: none;
+}
+.search input::placeholder { color: var(--faint); }
+.search-kbd {
+  font-family: "IBM Plex Mono", monospace; font-size: .68rem; color: var(--faint);
+  border: 1px solid var(--line); border-radius: 4px; padding: 0 .35rem; line-height: 1.4;
+}
+.search:focus-within .search-kbd { display: none; }
+.search-count {
+  font-family: "IBM Plex Mono", monospace; font-size: .66rem; color: var(--amber);
+  white-space: nowrap;
+}
+
+/* ── Sentiment tally + expand-all ──────────────────────────────────────── */
+.tally { display: inline-flex; gap: .4rem; align-items: center; }
+.tly {
+  font-family: "IBM Plex Mono", monospace; font-size: .68rem; font-weight: 500;
+  padding: .05rem .4rem; border-radius: 4px; border: 1px solid var(--line);
+}
+.tly-bull { color: var(--bull); border-color: color-mix(in srgb,var(--bull) 30%,transparent); }
+.tly-bear { color: var(--bear); border-color: color-mix(in srgb,var(--bear) 30%,transparent); }
+.tly-mix  { color: var(--mixed); }
+.tly-neu  { color: var(--muted); }
+.mini-btn {
+  margin-left: auto; cursor: pointer; background: var(--panel); color: var(--muted);
+  border: 1px solid var(--line); border-radius: 6px; padding: .3rem .6rem;
+  font-family: "IBM Plex Mono", monospace; font-size: .68rem; transition: all .18s;
+}
+.mini-btn:hover { color: var(--amber); border-color: var(--amber); }
+.mini-btn[aria-pressed="true"] { color: var(--amber); border-color: var(--amber-dim); }
+
+@media (max-width: 720px) {
+  .search { max-width: none; margin: 0 .6rem; }
+  .search-kbd { display: none; }
+}
+
 /* ── Ticker tape ───────────────────────────────────────────────────────── */
 .ticker {
   overflow: hidden; border-bottom: 1px solid var(--line);

@@ -12,12 +12,15 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # Topic display order for the rendered site.
 TOPIC_ORDER = [
+    "Markets",
+    "Macro/Economy",
+    "Central Banks",
     "Energy/Oil",
     "Gold/Metals",
-    "Central Banks",
-    "Macro/Economy",
+    "Crypto",
     "Geopolitics",
-    "Markets",
+    "Tech/AI",
+    "Companies",
     "Thai Markets",
     "Other",
 ]

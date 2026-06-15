@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ day }} · {{ site_title }}</title>
+  <title>{{ day_display }} · {{ site_title }}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -19,12 +19,19 @@
       <span class="brand-name">{{ site_title }}</span>
       <span class="live"><span class="dot"></span>LIVE</span>
     </div>
+    <div class="search">
+      <span class="search-ico">⌕</span>
+      <input id="search" type="search" autocomplete="off" spellcheck="false"
+             placeholder="Search headlines, sources, tickers…">
+      <kbd class="search-kbd">/</kbd>
+      <span id="searchCount" class="search-count"></span>
+    </div>
     <div class="topbar-right">
       <label class="day-pick">
         <span class="cal">▾</span>
         <select id="daySelect" aria-label="Select date">
           {% for d in days %}
-          <option value="{{ d.file }}"{% if d.day == day %} selected{% endif %}>{{ d.day }}{% if d.day == days[0].day %} · latest{% endif %}</option>
+          <option value="{{ d.file }}"{% if d.day == day %} selected{% endif %}>{{ d.display }}{% if d.day == days[0].day %} · latest{% endif %}</option>
           {% endfor %}
         </select>
       </label>
@@ -56,8 +63,17 @@
   <!-- ── Stories ────────────────────────────────────────────────────────── -->
   <main class="stage" id="stage">
     <div class="dateline">
-      <span class="dateline-day">{{ day }}</span>
+      <span class="dateline-day">{{ day_display }}</span>
       <span class="dateline-meta">{{ total }} stories{% if count > total %} · {{ count }} articles, {{ count - total }} merged{% endif %} · refreshed {{ generated }}</span>
+      {% if tally %}
+      <span class="tally">
+        {% if tally.bullish %}<span class="tly tly-bull" title="bullish">▲ {{ tally.bullish }}</span>{% endif %}
+        {% if tally.bearish %}<span class="tly tly-bear" title="bearish">▼ {{ tally.bearish }}</span>{% endif %}
+        {% if tally.mixed %}<span class="tly tly-mix" title="mixed">◆ {{ tally.mixed }}</span>{% endif %}
+        {% if tally.neutral %}<span class="tly tly-neu" title="neutral">– {{ tally.neutral }}</span>{% endif %}
+      </span>
+      {% endif %}
+      <button id="toggleAll" class="mini-btn" aria-pressed="false">Expand all</button>
     </div>
 
     {% for topic, items in groups %}
@@ -65,7 +81,8 @@
       <h2 class="pane-title">{{ topic }} <span>{{ items | length }}</span></h2>
       <div class="cards">
         {% for s in items %}
-        <article class="card sent-{{ s.sentiment }}" style="--i: {{ loop.index0 }}">
+        <article class="card sent-{{ s.sentiment }}" style="--i: {{ loop.index0 }}"
+                 data-search="{{ (s.headline ~ ' ' ~ s.source ~ ' ' ~ (s.instruments | join(' ')) ~ ' ' ~ (s.bullets | join(' '))) | lower }}">
           <button class="card-head" aria-expanded="false">
             <span class="imp" title="importance {{ s.max_importance }}/5">
               {% for n in range(5) %}<i class="seg{% if n < s.max_importance %} on{% endif %}"></i>{% endfor %}
@@ -105,6 +122,7 @@
     {% if not groups %}
     <div class="empty">No stories for this day yet.</div>
     {% endif %}
+    <div class="empty" id="noResults" hidden>No stories match “<span id="noResultsQ"></span>”.</div>
   </main>
 
   <footer class="foot">
