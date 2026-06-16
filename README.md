@@ -56,6 +56,12 @@ prompts may be used for training — route confidential content to local Ollama.
 
 ## Cloud deploy (GitHub Actions → Cloudflare Pages)
 
+**Live site:** https://macro-brief-buy.pages.dev
+(The Pages project is named `macro-brief`, but the `macro-brief.pages.dev`
+subdomain was already taken, so Cloudflare auto-assigned `macro-brief-buy`.
+`*.pages.dev` subdomains are globally unique — the project name and the URL can
+differ.)
+
 1. Push this repo to GitHub.
 2. Create a Cloudflare Pages project named `macro-brief` (or edit the name in
    `.github/workflows/daily.yml`).

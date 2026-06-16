@@ -9,6 +9,11 @@ on:
 permissions:
   contents: read
 
+env:
+  # GitHub forces Actions onto Node 24 starting 2026-06-16. Opt in explicitly so
+  # the run is pinned to that runtime and the deprecation warning goes away.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 concurrency:
   group: daily-brief
   cancel-in-progress: false
@@ -52,6 +57,20 @@ jobs:
         with:
           path: news.db
           key: news-db-${{ github.run_id }}
+
+      # Durable backup. The cache above is fast but evictable (GitHub drops
+      # caches after 7 days of no access, or LRU past 10 GB). This artifact is a
+      # 90-day insurance copy: if the cache is ever lost, download the latest
+      # news.db from a recent run to re-seed instead of re-summarizing months of
+      # articles from scratch.
+      - name: Backup DB (artifact)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: news-db
+          path: news.db
+          retention-days: 90
+          overwrite: true
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
