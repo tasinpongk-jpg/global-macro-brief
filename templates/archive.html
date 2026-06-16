@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Archive · {{ site_title }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="static/dashboard.css">
+</head>
+<body>
+<div class="archive">
+  <a class="back" href="index.html">← Back to latest brief</a>
+  <h1>Archive</h1>
+  <p class="sub">{{ total_days }} daily briefs · refreshed {{ generated }}</p>
+
+  {% for m in months %}
+  <div class="month">{{ m.label }}</div>
+  <div class="days">
+    {% for d in m.days %}
+    <a class="dayrow" href="{{ d.file }}"><b>{{ d.display }}</b><span>{{ d.count }}</span></a>
+    {% endfor %}
+  </div>
+  {% endfor %}
+
+  {% if not months %}
+  <p class="sub">No briefs yet.</p>
+  {% endif %}
+</div>
+</body>
+</html>

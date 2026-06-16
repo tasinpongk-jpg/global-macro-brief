@@ -321,6 +321,25 @@ a:hover { text-decoration: underline; }
   border-top: 1px solid var(--line); padding: .55rem 1.25rem; color: var(--faint);
   font-family: "IBM Plex Mono", monospace; font-size: .66rem; text-align: center;
 }
+.foot a { color: var(--muted); text-decoration: none; }
+.foot a:hover { color: var(--amber); }
+.foot-sep { margin: 0 .4rem; opacity: .5; }
+
+/* ── Archive index (all past briefs) ──────────────────────────────────── */
+.archive { max-width: 760px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+.archive h1 { font-family: "Fraunces", serif; font-weight: 900; font-size: 1.9rem; margin: 0 0 .25rem; }
+.archive .sub { color: var(--muted); font-family: "IBM Plex Mono", monospace; font-size: .78rem; margin-bottom: 2rem; }
+.archive .back { color: var(--muted); text-decoration: none; font-family: "IBM Plex Mono", monospace; font-size: .75rem; }
+.archive .back:hover { color: var(--amber); }
+.archive .month { margin: 1.6rem 0 .6rem; font-family: "IBM Plex Mono", monospace; font-size: .72rem;
+  color: var(--muted); text-transform: uppercase; letter-spacing: .12em; }
+.archive .days { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: .5rem; }
+.archive .dayrow { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem;
+  padding: .55rem .7rem; border: 1px solid var(--line); border-radius: 7px; background: var(--panel);
+  text-decoration: none; color: inherit; transition: border-color .15s; }
+.archive .dayrow:hover { border-color: var(--amber); }
+.archive .dayrow b { font-weight: 600; font-size: .85rem; }
+.archive .dayrow span { color: var(--muted); font-family: "IBM Plex Mono", monospace; font-size: .7rem; }
 
 @media (max-width: 640px) {
   .dateline-day { font-size: 1.35rem; }

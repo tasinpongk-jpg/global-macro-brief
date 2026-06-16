@@ -7,7 +7,7 @@ on:
   workflow_dispatch: {}   # allow manual runs
 
 permissions:
-  contents: read
+  contents: write   # push the news.db snapshot branch (durable DB backup)
 
 env:
   # GitHub forces Actions onto Node 24 starting 2026-06-16. Opt in explicitly so
@@ -43,6 +43,20 @@ jobs:
           key: news-db-${{ github.run_id }}
           restore-keys: news-db-
 
+      # If the cache was evicted (7-day inactivity / 10 GB LRU), fall back to the
+      # durable copy kept on the db-snapshot branch. Without this, a lost cache
+      # means starting from an empty DB: lost history + a costly cold re-summarize.
+      - name: Seed DB from snapshot branch (cache fallback)
+        run: |
+          if [ -f news.db ]; then
+            echo "Cache hit — news.db present ($(wc -c < news.db) bytes)."
+          elif git fetch origin db-snapshot --depth=1 2>/dev/null; then
+            git show FETCH_HEAD:news.db > news.db
+            echo "Cache miss — restored news.db from db-snapshot ($(wc -c < news.db) bytes)."
+          else
+            echo "No cache and no snapshot branch yet — starting from a fresh DB."
+          fi
+
       - name: Run pipeline
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -58,11 +72,27 @@ jobs:
           path: news.db
           key: news-db-${{ github.run_id }}
 
-      # Durable backup. The cache above is fast but evictable (GitHub drops
-      # caches after 7 days of no access, or LRU past 10 GB). This artifact is a
-      # 90-day insurance copy: if the cache is ever lost, download the latest
-      # news.db from a recent run to re-seed instead of re-summarizing months of
-      # articles from scratch.
+      # Durable, auto-restorable backup: store news.db on its own orphan branch.
+      # Uses git plumbing so it never touches the working tree or the main branch
+      # — each push replaces the branch with a single fresh commit (no history
+      # bloat). This is the copy the "Seed DB" step above restores from.
+      - name: Persist DB to snapshot branch
+        if: always()
+        env:
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: github-actions[bot]@users.noreply.github.com
+        run: |
+          test -f news.db || { echo "No news.db to persist."; exit 0; }
+          blob=$(git hash-object -w news.db)
+          tree=$(printf '100644 blob %s\tnews.db\n' "$blob" | git mktree)
+          commit=$(git commit-tree "$tree" -m "DB snapshot (run ${GITHUB_RUN_ID})")
+          git push -f origin "$commit:refs/heads/db-snapshot"
+          echo "Pushed news.db to db-snapshot ($(wc -c < news.db) bytes)."
+
+      # 90-day insurance copy, downloadable from the run page if you ever need to
+      # re-seed by hand (e.g. the snapshot branch was deleted).
       - name: Backup DB (artifact)
         if: always()
         uses: actions/upload-artifact@v4

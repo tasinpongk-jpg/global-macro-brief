@@ -51,6 +51,22 @@ feeds:
   - name: Investing.com Commodities
     url: https://www.investing.com/rss/commodities.rss
     topic: Gold/Metals
+  - name: Mining.com
+    url: https://www.mining.com/feed/
+    topic: Gold/Metals
+
+  # ── Crypto ──────────────────────────────────────────────────────────────────
+  - name: CoinDesk
+    url: https://www.coindesk.com/arc/outboundfeeds/rss/
+    topic: Crypto
+  - name: Cointelegraph
+    url: https://cointelegraph.com/rss
+    topic: Crypto
+
+  # ── Tech / AI ───────────────────────────────────────────────────────────────
+  - name: TechCrunch
+    url: https://techcrunch.com/feed/
+    topic: Tech/AI
 
   # ── Thai market (English) ───────────────────────────────────────────────────
   - name: Bangkok Post Business

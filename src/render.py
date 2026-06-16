@@ -153,20 +153,25 @@ def render_site(conn: sqlite3.Connection, cfg: Config, days: int = 21) -> None:
     for r in rows:
         by_day[_day_key(r["published"] or r["fetched_at"])].append(_row_to_story(r))
 
-    ordered_days = sorted((d for d in by_day if d != "undated"), reverse=True)[:days]
+    # Every day in the DB gets its own page so Archive links always resolve.
+    # The date picker, by contrast, only lists the most recent `days` so the
+    # dropdown stays usable as history grows.
+    all_days = sorted((d for d in by_day if d != "undated"), reverse=True)
     if "undated" in by_day:
-        ordered_days.append("undated")
+        all_days.append("undated")
 
-    # Precompute clustered groups + metadata so the date picker can list all days.
     day_data: dict[str, tuple] = {}
-    days_meta: list[dict] = []
-    for day in ordered_days:
+    for day in all_days:
         groups = _topic_groups(by_day[day])
         n_clusters = sum(len(items) for _, items in groups)
         fname = f"{day}.html" if day != "undated" else "undated.html"
         day_data[day] = (groups, n_clusters, len(by_day[day]), fname)
-        days_meta.append({"day": day, "file": fname, "count": n_clusters,
-                          "display": _pretty_date(day)})
+
+    recent = [d for d in all_days if d != "undated"][:days]
+    if "undated" in by_day:
+        recent.append("undated")
+    days_meta = [{"day": d, "file": day_data[d][3], "count": day_data[d][1],
+                  "display": _pretty_date(d)} for d in recent]
 
     env = _env()
     dash = env.get_template("dashboard.html")
@@ -181,16 +186,40 @@ def render_site(conn: sqlite3.Connection, cfg: Config, days: int = 21) -> None:
             generated=generated,
         )
 
-    for day in ordered_days:
+    for day in all_days:
         (cfg.site_dir / day_data[day][3]).write_text(render_day(day), encoding="utf-8")
 
     # index.html = the most recent day's dashboard (what opens by default).
-    if ordered_days:
+    if all_days:
         (cfg.site_dir / "index.html").write_text(
-            render_day(ordered_days[0]), encoding="utf-8")
+            render_day(all_days[0]), encoding="utf-8")
     else:
         (cfg.site_dir / "index.html").write_text(
             "<!doctype html><meta charset=utf-8><title>Daily Global-Macro Brief</title>"
             "<body style='font-family:sans-serif;padding:3rem'>No briefs yet.</body>",
             encoding="utf-8")
-    log.info("Rendered %d day pages + index -> %s", len(ordered_days), cfg.site_dir)
+
+    _render_archive(env, cfg, all_days, day_data, generated)
+    log.info("Rendered %d day pages + index + archive -> %s", len(all_days), cfg.site_dir)
+
+
+def _render_archive(env, cfg, all_days, day_data, generated) -> None:
+    """Write archive.html: every day in the DB, grouped by month (newest first)."""
+    months: list[dict] = []
+    cur_key = None
+    for day in all_days:
+        if day == "undated":
+            key, label = "undated", "Undated"
+        else:
+            key, label = day[:7], datetime.strptime(day, "%Y-%m-%d").strftime("%B %Y")
+        if key != cur_key:
+            months.append({"label": label, "days": []})
+            cur_key = key
+        months[-1]["days"].append({"file": day_data[day][3],
+                                   "display": _pretty_date(day),
+                                   "count": day_data[day][1]})
+    html = env.get_template("archive.html").render(
+        site_title=cfg.site_title, months=months, generated=generated,
+        total_days=len([d for d in all_days if d != "undated"]),
+    )
+    (cfg.site_dir / "archive.html").write_text(html, encoding="utf-8")

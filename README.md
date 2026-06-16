@@ -70,8 +70,12 @@ differ.)
    - `CLOUDFLARE_API_TOKEN` (Pages:Edit permission)
    - `CLOUDFLARE_ACCOUNT_ID`
 4. The cron runs daily at 23:00 UTC (≈ 06:00 Bangkok). Trigger manually anytime via
-   the **Run workflow** button (workflow_dispatch). The SQLite DB is cached between
-   runs so dedup persists.
+   the **Run workflow** button (workflow_dispatch).
+
+The SQLite DB persists across runs three ways, in order of use: a fast **Actions
+cache**, a durable **`db-snapshot` branch** (auto-restored if the cache is ever
+evicted), and a 90-day **artifact** for manual recovery. The `db-snapshot` branch
+holds a single binary `news.db` and is force-pushed each run — don't merge it.
 
 ## Project layout
 

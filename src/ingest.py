@@ -69,11 +69,12 @@ def _is_dup(conn: sqlite3.Connection, uh: str, norm_title: str) -> bool:
     return False
 
 
-def ingest_feed(conn: sqlite3.Connection, feed: Feed) -> int:
+def ingest_feed(conn: sqlite3.Connection, feed: Feed) -> tuple[int, int]:
+    """Return (new_articles_added, entries_seen_in_feed)."""
     parsed = feedparser.parse(feed.url)
     if parsed.bozo and not parsed.entries:
         log.warning("Feed failed: %s (%s)", feed.name, getattr(parsed, "bozo_exception", ""))
-        return 0
+        return 0, 0
 
     added = 0
     for entry in parsed.entries:
@@ -99,15 +100,33 @@ def ingest_feed(conn: sqlite3.Connection, feed: Feed) -> int:
             continue  # raced unique constraint
     conn.commit()
     log.info("%-26s +%d new (%d in feed)", feed.name, added, len(parsed.entries))
-    return added
+    return added, len(parsed.entries)
+
+
+def _gha_warning(msg: str) -> None:
+    """Emit a GitHub Actions warning annotation (surfaces in the run summary).
+
+    No-op visual difference when run locally — it's just a log line there.
+    """
+    print(f"::warning title=Feed health::{msg}", flush=True)
 
 
 def ingest_all(conn: sqlite3.Connection, cfg: Config) -> int:
     total = 0
+    dead: list[str] = []  # feeds that returned nothing (broken URL / empty / down)
     for feed in cfg.feeds:
         try:
-            total += ingest_feed(conn, feed)
+            added, entries = ingest_feed(conn, feed)
+            total += added
+            if entries == 0:
+                dead.append(feed.name)
         except Exception as e:  # noqa: BLE001 — never hard-fail the run on one feed
             log.error("Feed crashed: %s: %s", feed.name, e)
+            dead.append(feed.name)
     log.info("Ingest complete: %d new articles", total)
+    if dead:
+        _gha_warning(
+            f"{len(dead)}/{len(cfg.feeds)} feeds returned no entries: "
+            + ", ".join(dead)
+        )
     return total
