@@ -10,6 +10,9 @@ feeds:
   - name: CNBC Energy
     url: https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=19836768
     topic: Energy/Oil
+  - name: EIA Today in Energy
+    url: https://www.eia.gov/rss/todayinenergy.xml
+    topic: Energy/Oil
 
   # ── Markets / Macro ─────────────────────────────────────────────────────────
   - name: Investing.com News
@@ -24,6 +27,28 @@ feeds:
   - name: MarketWatch Top Stories
     url: https://feeds.content.dowjones.io/public/rss/mw_topstories
     topic: Markets
+  - name: WSJ Markets
+    url: https://feeds.content.dowjones.io/public/rss/RSSMarketsMain
+    topic: Markets
+
+  # ── Asia / Emerging markets ─────────────────────────────────────────────────
+  - name: Nikkei Asia
+    url: https://asia.nikkei.com/rss/feed/nar
+    topic: Markets
+  - name: SCMP Economy
+    url: https://www.scmp.com/rss/91/feed
+    topic: Macro/Economy
+  - name: Channel NewsAsia Business
+    url: https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6936
+    topic: Markets
+
+  # ── Geopolitics ─────────────────────────────────────────────────────────────
+  - name: Al Jazeera
+    url: https://www.aljazeera.com/xml/rss/all.xml
+    topic: Geopolitics
+  - name: The Diplomat
+    url: https://thediplomat.com/feed/
+    topic: Geopolitics
 
   # ── Forex / Rates ───────────────────────────────────────────────────────────
   - name: FXStreet
@@ -46,6 +71,15 @@ feeds:
   - name: Bank of England
     url: https://www.bankofengland.co.uk/rss/news
     topic: Central Banks
+  - name: Bank of Japan
+    url: https://www.boj.or.jp/en/rss/whatsnew.xml
+    topic: Central Banks
+  - name: Federal Reserve Speeches
+    url: https://www.federalreserve.gov/feeds/speeches.xml
+    topic: Central Banks
+  - name: BIS Central Bank Speeches
+    url: https://www.bis.org/doclist/cbspeeches.rss
+    topic: Central Banks
 
   # ── Gold / Metals / Commodities ─────────────────────────────────────────────
   - name: Investing.com Commodities
@@ -67,8 +101,17 @@ feeds:
   - name: TechCrunch
     url: https://techcrunch.com/feed/
     topic: Tech/AI
+  - name: Ars Technica
+    url: https://feeds.arstechnica.com/arstechnica/index
+    topic: Tech/AI
+  - name: VentureBeat AI
+    url: https://venturebeat.com/category/ai/feed/
+    topic: Tech/AI
 
   # ── Thai market (English) ───────────────────────────────────────────────────
   - name: Bangkok Post Business
     url: https://www.bangkokpost.com/rss/data/business.xml
+    topic: Thai Markets
+  - name: Bangkok Post Most Recent
+    url: https://www.bangkokpost.com/rss/data/most-recent.xml
     topic: Thai Markets

@@ -63,6 +63,10 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          # Cap summaries per run so the one-time backlog from newly-added feeds
+          # drains over a few days instead of hammering free-tier LLM quotas.
+          # Well above normal daily new-article volume, so steady state is uncapped.
+          MAX_ARTICLES_PER_RUN: "300"
         run: python -m src.pipeline
 
       - name: Save DB cache
