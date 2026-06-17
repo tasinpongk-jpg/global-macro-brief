@@ -59,6 +59,9 @@ a:hover { text-decoration: underline; }
   display: flex;
   flex-direction: column;     /* chrome rows auto-size; .stage flexes to fill */
 }
+/* Chrome rows keep their natural height (never shrink/overlap); .stage absorbs
+   the remaining space and owns scrolling. */
+.topbar, .ticker, .tldr, .tabs, .foot { flex: 0 0 auto; }
 .stage { flex: 1 1 auto; min-height: 0; }
 
 /* ── Topbar ────────────────────────────────────────────────────────────── */
