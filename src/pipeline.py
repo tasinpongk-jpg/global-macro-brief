@@ -27,8 +27,13 @@ log = logging.getLogger("pipeline")
 
 
 def summarize_pending(conn, cfg) -> int:
+    # Newest-first: when a per-run cap is set, today's brief must be summarized
+    # before older backlog so the front page is always complete. Backlog from
+    # newly-added feeds then fills in behind the current day instead of starving
+    # it.
     rows = conn.execute(
-        "SELECT * FROM articles WHERE summarized = 0 ORDER BY id ASC"
+        "SELECT * FROM articles WHERE summarized = 0 "
+        "ORDER BY COALESCE(published, fetched_at) DESC, id DESC"
     ).fetchall()
     if cfg.max_articles_per_run > 0:
         rows = rows[: cfg.max_articles_per_run]
