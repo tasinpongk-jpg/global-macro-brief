@@ -23,6 +23,7 @@ _KEY_FOR_PREFIX = {
     "groq/": "GROQ_API_KEY",
     "cerebras/": "CEREBRAS_API_KEY",
     "mistral/": "MISTRAL_API_KEY",
+    "cloudflare/": "CLOUDFLARE_API_KEY",  # also needs CLOUDFLARE_ACCOUNT_ID
     "ollama/": None,  # local, no key needed
 }
 
@@ -86,6 +87,29 @@ def _coerce(obj: dict, feed_topic: str) -> dict:
         "importance": importance,
         "instruments": [str(i).strip() for i in instruments if str(i).strip()][:8],
     }
+
+
+def complete_json(system: str, user: str, chain: list[str],
+                  max_tokens: int = 300) -> dict | None:
+    """Generic JSON completion over the provider fallback chain (used by digest).
+
+    Returns the first successfully-parsed JSON object, or None if all fail.
+    """
+    for model in (m for m in chain if _provider_available(m)):
+        try:
+            resp = litellm.completion(
+                model=model,
+                messages=[{"role": "system", "content": system},
+                          {"role": "user", "content": user}],
+                temperature=0.3, max_tokens=max_tokens,
+                response_format={"type": "json_object"}, num_retries=2,
+            )
+            content = _FENCE.sub("", resp.choices[0].message.content or "").strip()
+            return json.loads(content)
+        except Exception as e:  # noqa: BLE001 — try next provider
+            log.warning("complete_json %s failed: %s", model, e)
+            continue
+    return None
 
 
 def summarize(title: str, text: str, feed_topic: str, chain: list[str]) -> dict | None:

@@ -85,8 +85,8 @@ feeds:
   - name: Investing.com Commodities
     url: https://www.investing.com/rss/commodities.rss
     topic: Gold/Metals
-  - name: Mining.com
-    url: https://www.mining.com/feed/
+  - name: Northern Miner
+    url: https://www.northernminer.com/feed/
     topic: Gold/Metals
 
   # ── Crypto ──────────────────────────────────────────────────────────────────

@@ -12,6 +12,7 @@ import json
 import logging
 
 from .config import load_config
+from .digest import generate_digest
 from .extract import extract_text
 from .ingest import ingest_all
 from .models import init_db
@@ -86,6 +87,7 @@ def main() -> None:
         ingest_all(conn, cfg)
         if not args.no_summarize:
             summarize_pending(conn, cfg)
+            generate_digest(conn, cfg)  # one mood line for the latest day
 
     render_site(conn, cfg)
     conn.close()

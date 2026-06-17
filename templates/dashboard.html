@@ -27,6 +27,11 @@
       <span id="searchCount" class="search-count"></span>
     </div>
     <div class="topbar-right">
+      <div class="seg" id="viewSeg" role="tablist" aria-label="Group by">
+        <button class="seg-btn is-active" data-view="topic">By topic</button>
+        <button class="seg-btn" data-view="asset">By asset</button>
+      </div>
+      <button id="pinFilter" class="icon-btn" aria-pressed="false" title="Show only pinned assets">★</button>
       <label class="day-pick">
         <span class="cal">▾</span>
         <select id="daySelect" aria-label="Select date">
@@ -52,11 +57,35 @@
   </div>
   {% endif %}
 
+  <!-- ── TL;DR hero: "Today in 30 seconds" ──────────────────────────────── -->
+  {% if top5 %}
+  <section class="tldr" aria-label="Today in 30 seconds">
+    <div class="tldr-head">
+      <span class="tldr-title">TODAY IN 30 SECONDS</span>
+      <button id="newToggle" class="new-chip" hidden aria-pressed="false">
+        <span id="newCount">0</span> new
+      </button>
+    </div>
+    {% if mood %}<p class="tldr-mood">{{ mood }}</p>{% endif %}
+    <ol class="tldr-list">
+      {% for s in top5 %}
+      <li>
+        <a class="tldr-item" href="#{{ s.cid }}" data-cid="{{ s.cid }}">
+          <span class="tldr-imp">{% for n in range(5) %}<i class="seg{% if n < s.max_importance %} on{% endif %}"></i>{% endfor %}</span>
+          <span class="tldr-hl">{{ s.headline }}</span>
+          {% if s.size > 1 %}<span class="tldr-src">· {{ s.size }} sources</span>{% endif %}
+        </a>
+      </li>
+      {% endfor %}
+    </ol>
+  </section>
+  {% endif %}
+
   <!-- ── Tabs ───────────────────────────────────────────────────────────── -->
   <nav class="tabs" id="tabs">
     <button class="tab is-active" data-topic="__all__">All<span class="tab-n">{{ total }}</span></button>
-    {% for topic, items in groups %}
-    <button class="tab" data-topic="{{ topic | replace('/', '-') }}">{{ topic }}<span class="tab-n">{{ items | length }}</span></button>
+    {% for g in groups %}
+    <button class="tab" data-topic="{{ g.topic | replace('/', '-') }}">{{ g.topic }}<span class="tab-n">{{ g.cards | length }}</span></button>
     {% endfor %}
   </nav>
 
@@ -76,12 +105,24 @@
       <button id="toggleAll" class="mini-btn" aria-pressed="false">Expand all</button>
     </div>
 
-    {% for topic, items in groups %}
-    <section class="topic-pane" data-topic="{{ topic | replace('/', '-') }}">
-      <h2 class="pane-title">{{ topic }} <span>{{ items | length }}</span></h2>
+    <!-- Topic panes (default "By topic" view) -->
+    <div id="topicStage">
+    {% for g in groups %}
+    {% set tot = g.sent.bullish + g.sent.bearish + g.sent.mixed + g.sent.neutral %}
+    <section class="topic-pane" data-topic="{{ g.topic | replace('/', '-') }}">
+      <h2 class="pane-title">{{ g.topic }} <span>{{ g.cards | length }}</span>
+        {% if tot %}
+        <span class="sentbar" title="{{ g.sent.bullish }} bullish · {{ g.sent.bearish }} bearish">
+          <i class="sb-bull" style="width:{{ (g.sent.bullish / tot * 100) | round(1) }}%"></i><i class="sb-bear" style="width:{{ (g.sent.bearish / tot * 100) | round(1) }}%"></i>
+        </span>
+        {% endif %}
+      </h2>
       <div class="cards">
-        {% for s in items %}
-        <article class="card sent-{{ s.sentiment }}" style="--i: {{ loop.index0 }}"
+        {% for s in g.cards %}
+        <article class="card sent-{{ s.sentiment }}{% if s.cid == lead_cid %} lead{% endif %}" id="{{ s.cid }}" style="--i: {{ loop.index0 }}"
+                 data-ts="{{ s.ts or '' }}"
+                 data-instruments="{{ s.instruments | map('upper') | join(',') }}"
+                 data-size="{{ s.size }}"
                  data-search="{{ (s.headline ~ ' ' ~ s.source ~ ' ' ~ (s.instruments | join(' ')) ~ ' ' ~ (s.bullets | join(' '))) | lower }}">
           <button class="card-head" aria-expanded="false">
             <span class="imp" title="importance {{ s.max_importance }}/5">
@@ -91,9 +132,10 @@
               <span class="card-headline">{{ s.headline }}</span>
               <span class="card-meta">
                 <span class="src">{{ s.source }}</span>
+                {% if s.cid == most_covered_cid %}<span class="chip chip-fire" title="most covered today">🔥 most covered</span>{% endif %}
                 {% if s.size > 1 %}<span class="chip chip-more">+{{ s.size - 1 }}</span>{% endif %}
                 <span class="chip chip-sent">{{ s.sentiment }}</span>
-                {% for i in s.instruments %}<span class="sym">{{ i }}</span>{% endfor %}
+                {% for i in s.instruments %}<button type="button" class="sym" data-sym="{{ i | upper }}" title="Pin {{ i }}">{{ i }}</button>{% endfor %}
               </span>
             </span>
             <span class="caret">+</span>
@@ -118,6 +160,10 @@
       </div>
     </section>
     {% endfor %}
+    </div>
+
+    <!-- By-asset view (populated by app.js from the cards above) -->
+    <div id="assetStage" class="asset-stage" hidden></div>
 
     {% if not groups %}
     <div class="empty">No stories for this day yet.</div>

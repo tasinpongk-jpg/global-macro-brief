@@ -29,6 +29,13 @@ CREATE TABLE IF NOT EXISTS articles (
 CREATE INDEX IF NOT EXISTS idx_articles_norm_title ON articles(norm_title);
 CREATE INDEX IF NOT EXISTS idx_articles_published  ON articles(published);
 CREATE INDEX IF NOT EXISTS idx_articles_summarized ON articles(summarized);
+
+-- One row per day: the LLM-written "macro mood" sentence for the TL;DR hero.
+CREATE TABLE IF NOT EXISTS digests (
+    day          TEXT PRIMARY KEY,   -- YYYY-MM-DD (UTC)
+    mood         TEXT,
+    generated_at TEXT NOT NULL       -- ISO8601
+);
 """
 
 

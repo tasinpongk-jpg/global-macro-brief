@@ -56,9 +56,10 @@ a:hover { text-decoration: underline; }
 /* App shell: full viewport, fixed chrome + scrolling stage ------------------ */
 .app {
   height: 100dvh;
-  display: grid;
-  grid-template-rows: auto auto auto 1fr auto;
+  display: flex;
+  flex-direction: column;     /* chrome rows auto-size; .stage flexes to fill */
 }
+.stage { flex: 1 1 auto; min-height: 0; }
 
 /* ── Topbar ────────────────────────────────────────────────────────────── */
 .topbar {
@@ -341,8 +342,71 @@ a:hover { text-decoration: underline; }
 .archive .dayrow b { font-weight: 600; font-size: .85rem; }
 .archive .dayrow span { color: var(--muted); font-family: "IBM Plex Mono", monospace; font-size: .7rem; }
 
+/* ── Reading Experience v2 ────────────────────────────────────────────── */
+
+/* View toggle (By topic / By asset) */
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.seg-btn { background: var(--panel); color: var(--muted); border: 0; cursor: pointer;
+  font: 600 .72rem/1 "IBM Plex Mono", monospace; padding: .4rem .6rem; }
+.seg-btn.is-active { background: var(--panel-2); color: var(--amber); }
+.seg-btn + .seg-btn { border-left: 1px solid var(--line); }
+
+#pinFilter.is-active { color: var(--amber); border-color: var(--amber-dim); }
+
+/* TL;DR hero — "Today in 30 seconds" */
+.tldr { padding: .7rem 1.25rem .8rem; border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--panel-2) 0%, transparent 160%); }
+.tldr-head { display: flex; align-items: center; gap: .8rem; margin-bottom: .3rem; }
+.tldr-title { font: 600 .68rem/1 "IBM Plex Mono", monospace; letter-spacing: .18em;
+  color: var(--amber); }
+.new-chip { margin-left: auto; cursor: pointer; background: var(--panel); color: var(--cyan);
+  border: 1px solid var(--line); border-radius: 20px; padding: .2rem .6rem;
+  font: 600 .68rem/1 "IBM Plex Mono", monospace; }
+.new-chip.is-active { color: #062; background: var(--cyan); border-color: var(--cyan); }
+.tldr-mood { margin: .1rem 0 .5rem; font-family: "Fraunces", serif; font-weight: 600;
+  font-size: 1.02rem; line-height: 1.3; color: var(--text); }
+.tldr-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .18rem;
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); }
+.tldr-item { display: flex; align-items: baseline; gap: .5rem; padding: .15rem .2rem;
+  border-radius: 5px; color: var(--text); text-decoration: none; }
+.tldr-item:hover { background: var(--panel); text-decoration: none; }
+.tldr-imp { display: inline-flex; gap: 2px; flex: 0 0 auto; transform: translateY(-1px); }
+.tldr-imp .seg { width: 5px; height: 5px; border-radius: 1px; background: var(--line); border: 0; }
+.tldr-imp .seg.on { background: var(--amber); }
+.tldr-hl { font-size: .82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tldr-src { color: var(--faint); font: .68rem "IBM Plex Mono", monospace; flex: 0 0 auto; }
+
+/* Per-topic sentiment bar in pane titles */
+.sentbar { display: inline-flex; width: 46px; height: 5px; border-radius: 3px; overflow: hidden;
+  background: var(--line); vertical-align: middle; margin-left: .4rem; }
+.sentbar .sb-bull { background: var(--bull); height: 100%; }
+.sentbar .sb-bear { background: var(--bear); height: 100%; }
+
+/* Lead story (highest importance of the day) */
+.card.lead { border-left-width: 4px; background: var(--panel-2); box-shadow: var(--shadow); }
+.card.lead .card-headline { font-size: 1.12rem; font-weight: 700; }
+
+/* Most-covered + pinnable ticker chips */
+.chip-fire { color: var(--mixed); border-color: var(--amber-dim) !important; }
+.sym { cursor: pointer; background: transparent; border: 1px solid var(--line); color: var(--cyan);
+  font: 500 .66rem "IBM Plex Mono", monospace; border-radius: 4px; padding: .05rem .3rem; }
+.sym:hover { border-color: var(--cyan); }
+.sym.pinned { color: var(--amber); border-color: var(--amber); background: rgba(255,176,0,.08); }
+.sym.pinned::before { content: "★ "; }
+
+/* New-since-visit dot */
+.card.is-new > .card-head::after { content: ""; position: absolute; top: .55rem; right: 1.7rem;
+  width: 7px; height: 7px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 6px var(--cyan); }
+.card-head { position: relative; }
+
+/* By-asset view */
+.asset-pane.hidden, .topic-pane.hidden { display: none; }
+.asset-name { font-family: "IBM Plex Mono", monospace; color: var(--amber); }
+
 @media (max-width: 640px) {
   .dateline-day { font-size: 1.35rem; }
   .card-headline { font-size: .95rem; }
   .brand-name { font-size: 1rem; }
+  .tldr-list { grid-template-columns: 1fr; }
+  .seg-btn { padding: .4rem .45rem; }
 }

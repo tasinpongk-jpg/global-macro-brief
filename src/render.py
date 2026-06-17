@@ -55,6 +55,7 @@ def _row_to_story(r: sqlite3.Row) -> dict:
         "url": r["url"],
         "source": r["source"],
         "published": r["published"],
+        "ts": r["published"] or r["fetched_at"],  # for "new since last visit"
     }
 
 
@@ -121,6 +122,14 @@ def _tally(groups) -> dict:
     return counts
 
 
+def _sent_counts(items) -> dict:
+    """Per-group sentiment split for the mini sentiment bar."""
+    c = {"bullish": 0, "bearish": 0, "mixed": 0, "neutral": 0}
+    for it in items:
+        c[it["sentiment"]] = c.get(it["sentiment"], 0) + 1
+    return c
+
+
 def _ticker(groups) -> list[dict]:
     """Top instruments of the day with their cluster sentiment, for the tape."""
     flat = [c for _, items in groups for c in items]
@@ -177,13 +186,34 @@ def render_site(conn: sqlite3.Connection, cfg: Config, days: int = 21) -> None:
     dash = env.get_template("dashboard.html")
     generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
+    # Mood lines for the TL;DR hero, keyed by day (may be absent → no mood shown).
+    moods = {r["day"]: r["mood"] for r in
+             conn.execute("SELECT day, mood FROM digests")}
+
     def render_day(day: str) -> str:
         groups, n_clusters, n_stories, _ = day_data[day]
+        # Assign each cluster a stable id and enrich groups with a sentiment
+        # split. Copies keep day_data immutable across the two render passes.
+        enriched, flat, cid = [], [], 0
+        for topic, items in groups:
+            gi = []
+            for c in items:
+                gi.append({**c, "cid": f"s{cid}"})
+                cid += 1
+            enriched.append({"topic": topic, "cards": gi, "sent": _sent_counts(gi)})
+            flat.extend(gi)
+        # TL;DR top 5, the lead (hero) story, and the most-covered cluster.
+        top5 = sorted(flat, key=lambda c: (c["max_importance"], c["size"]),
+                      reverse=True)[:5]
+        lead_cid = top5[0]["cid"] if top5 else None
+        most_covered_cid = (max(flat, key=lambda c: c["size"])["cid"]
+                            if flat and max(c["size"] for c in flat) > 1 else None)
         return dash.render(
             site_title=cfg.site_title, day=day, day_display=_pretty_date(day),
-            days=days_meta, groups=groups, ticker=_ticker(groups),
+            days=days_meta, groups=enriched, ticker=_ticker(groups),
             tally=_tally(groups), total=n_clusters, count=n_stories,
-            generated=generated,
+            generated=generated, mood=moods.get(day), top5=top5,
+            lead_cid=lead_cid, most_covered_cid=most_covered_cid,
         )
 
     for day in all_days:

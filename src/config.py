@@ -55,7 +55,8 @@ def load_config() -> Config:
     chain = [m.strip() for m in os.getenv(
         "LLM_CHAIN",
         "cerebras/gpt-oss-120b,groq/llama-3.1-8b-instant,"
-        "gemini/gemini-2.5-flash,mistral/mistral-small-latest,ollama/qwen2.5",
+        "gemini/gemini-2.5-flash,mistral/mistral-small-latest,"
+        "cloudflare/@cf/meta/llama-3.1-8b-instruct,ollama/qwen2.5",
     ).split(",") if m.strip()]
 
     feeds_file = ROOT / "config" / "feeds.yaml"
