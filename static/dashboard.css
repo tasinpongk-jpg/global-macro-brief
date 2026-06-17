@@ -353,6 +353,12 @@ a:hover { text-decoration: underline; }
 
 #pinFilter.is-active { color: var(--amber); border-color: var(--amber-dim); }
 
+/* Multi-select topic filter — clearer "on" state for selected tabs */
+.tab.is-active { background: rgba(255,176,0,.09); border-radius: 6px 6px 0 0; }
+.tab.is-active:not([data-topic="__all__"])::before {
+  content: "✓"; color: var(--amber); font-size: .7rem; margin-right: .1rem;
+}
+
 /* TL;DR hero — "Today in 30 seconds" */
 .tldr { padding: .7rem 1.25rem .8rem; border-bottom: 1px solid var(--line);
   background: linear-gradient(180deg, var(--panel-2) 0%, transparent 160%); }

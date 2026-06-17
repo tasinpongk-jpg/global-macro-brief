@@ -36,19 +36,24 @@
   var noResultsQ  = document.getElementById("noResultsQ");
   var daySelect = document.getElementById("daySelect");
 
-  var DEFAULT_TAB = "Markets";
-  var activeTopic = tabs.some(function (t) { return t.dataset.topic === DEFAULT_TAB; })
-    ? DEFAULT_TAB : "__all__";
   var query = "";
   var view = "topic";          // "topic" | "asset"
   var pinnedOnly = false;
   var newOnly = false;
 
+  // Multi-select topic filter — a set of data-topic values. Empty = show all.
+  var activeTopics = (function () {
+    try { return new Set(JSON.parse(ls(true, "gmb-topics") || "[]")); }
+    catch (e) { return new Set(); }
+  })();
+  function topicAll() { return activeTopics.size === 0; }
+  function saveTopics() { ls(false, "gmb-topics", JSON.stringify(Array.from(activeTopics))); }
+
   var pins = (function () {
     try { return new Set(JSON.parse(ls(true, "gmb-pins") || "[]")); }
     catch (e) { return new Set(); }
   })();
-  function savePins() { ls(false, "gmb-pins", JSON.stringify(Array.prototype.slice.call(pins))); }
+  function savePins() { ls(false, "gmb-pins", JSON.stringify(Array.from(pins))); }
 
   /* ── Predicates ────────────────────────────────────────────────────── */
   function matchesSearch(card) {
@@ -148,16 +153,18 @@
     });
 
     if (view === "topic") {
-      var all = activeTopic === "__all__" || searching || pinnedOnly || newOnly;
+      var override = searching || pinnedOnly || newOnly;   // these show across all topics
       Array.prototype.forEach.call(topicStage.querySelectorAll(".topic-pane"), function (p) {
         var hasVisible = p.querySelector('.card:not([style*="display: none"])');
-        var topicShown = all || p.dataset.topic === activeTopic;
+        var topicShown = override || topicAll() || activeTopics.has(p.dataset.topic);
         p.classList.toggle("hidden", !(topicShown && hasVisible));
         var title = p.querySelector(".pane-title");
-        if (title) title.style.display = (all ? "" : "none");
+        if (title) title.style.display = "";   // multi-select: always label panes
       });
       tabs.forEach(function (t) {
-        t.classList.toggle("is-active", !searching && !pinnedOnly && !newOnly && t.dataset.topic === activeTopic);
+        var dt = t.dataset.topic;
+        var on = !override && (dt === "__all__" ? topicAll() : activeTopics.has(dt));
+        t.classList.toggle("is-active", on);
       });
     } else {
       Array.prototype.forEach.call(assetStage.querySelectorAll(".asset-pane"), function (p) {
@@ -200,24 +207,38 @@
 
   /* ── Tabs ──────────────────────────────────────────────────────────── */
   tabs.forEach(function (t) {
+    // Multi-select: each tab toggles its topic; "All" clears the filter.
     t.addEventListener("click", function () {
-      activeTopic = t.dataset.topic;
+      var dt = t.dataset.topic;
       if (search && search.value) { search.value = ""; query = ""; }
       pinnedOnly = false; newOnly = false;
       if (pinFilter) pinFilter.classList.remove("is-active");
+      if (dt === "__all__") activeTopics.clear();
+      else if (activeTopics.has(dt)) activeTopics.delete(dt);
+      else activeTopics.add(dt);
+      saveTopics();
       apply();
     });
+    t.title = t.dataset.topic === "__all__"
+      ? "Show all topics (clear filter)" : "Toggle this topic — pick any combination";
   });
   document.addEventListener("keydown", function (e) {
     if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
     if (/input|select|textarea/i.test(e.target.tagName || "")) return;
     if (query || view !== "topic") return;
-    var idx = tabs.findIndex(function (t) { return t.dataset.topic === activeTopic; });
+    // Arrows jump to a single topic (replaces the current selection).
+    var idx = topicAll() ? 0
+      : (activeTopics.size === 1
+          ? tabs.findIndex(function (t) { return activeTopics.has(t.dataset.topic); })
+          : 0);
     if (idx < 0) idx = 0;
     idx += e.key === "ArrowRight" ? 1 : -1;
     if (idx < 0) idx = tabs.length - 1;
     if (idx >= tabs.length) idx = 0;
-    activeTopic = tabs[idx].dataset.topic;
+    var dt = tabs[idx].dataset.topic;
+    activeTopics.clear();
+    if (dt !== "__all__") activeTopics.add(dt);
+    saveTopics();
     tabs[idx].scrollIntoView({ inline: "center", block: "nearest" });
     apply();
   });
@@ -283,7 +304,7 @@
       e.preventDefault();
       var cid = a.dataset.cid;
       if (search && search.value) { search.value = ""; query = ""; }
-      pinnedOnly = false; newOnly = false; activeTopic = "__all__";
+      pinnedOnly = false; newOnly = false; activeTopics.clear();  // show all to reveal the story
       if (view !== "topic") setView("topic"); else apply();
       var card = document.getElementById(cid);
       if (card) {
