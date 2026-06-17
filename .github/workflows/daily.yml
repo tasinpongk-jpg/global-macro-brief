@@ -63,9 +63,11 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
-          # Cloudflare Workers AI backstop (last cloud fallback). Needs a token
-          # with Workers AI Read+Run perms; account id is reused from Pages.
-          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+          # Cloudflare Workers AI backstop (last cloud fallback). Reuses the
+          # existing Pages token + account id — no new secret. The token must be
+          # granted the "Workers AI" Read+Run scope in Cloudflare for this to
+          # activate; until then the provider is simply skipped.
+          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           # Cap summaries per run so the one-time backlog from newly-added feeds
           # drains over a few days instead of hammering free-tier LLM quotas.
