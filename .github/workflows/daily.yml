@@ -30,7 +30,7 @@ jobs:
           cache: pip
 
       - name: Install deps
-        run: pip install -r requirements.txt
+        run: pip install --only-binary=litellm -r requirements.txt
 
       # Persist the SQLite DB across runs so dedup survives and each daily run
       # only summarizes *new* articles. Split restore/save so the DB is saved

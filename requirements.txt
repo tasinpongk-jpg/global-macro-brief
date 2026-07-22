@@ -1,10 +1,14 @@
-feedparser>=6.0.11
-trafilatura>=1.12.2
-readability-lxml>=0.8.1
-lxml>=5.2
-litellm>=1.55.0
-PyYAML>=6.0.2
-Jinja2>=3.1.4
-python-dotenv>=1.0.1
-python-dateutil>=2.9.0
-requests>=2.32.3
+# Direct dependencies are pinned so scheduled runs and local installs do not
+# silently pick incompatible releases. In particular, LiteLLM 1.92+ currently
+# ships without a Windows wheel, while 1.91.4 is portable across CI platforms.
+feedparser==6.0.12
+trafilatura==2.1.0
+readability-lxml==0.8.4.1
+lxml==6.1.1
+litellm==1.91.4
+tenacity==9.1.4
+PyYAML==6.0.3
+Jinja2==3.1.6
+python-dotenv==1.2.2
+python-dateutil==2.9.0.post0
+requests==2.34.2
