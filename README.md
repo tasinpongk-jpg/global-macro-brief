@@ -27,8 +27,15 @@ Architecture and Toolchain Guide.md` for the full research behind these choices.
 ## Quick start (local)
 
 ```bash
-python -m venv .venv && . .venv/Scripts/activate   # Windows PowerShell: .venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+# macOS / Linux
+python -m venv .venv
+source .venv/bin/activate
+
+# Windows PowerShell (use instead of the two commands above)
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+
+pip install --only-binary=litellm -r requirements.txt
 cp .env.example .env          # then paste your GEMINI_API_KEY
 
 # Dry run — ingest + render only, no LLM/API key needed:
@@ -42,6 +49,19 @@ python -m src.pipeline --render-only
 ```
 
 Open `site/index.html` in a browser.
+
+## Tests
+
+The test suite is offline: it uses synthetic RSS records and a temporary SQLite
+database, so it needs no API keys and makes no LLM calls.
+
+```bash
+python -m unittest discover -s tests -v
+python -m compileall -q src tests
+```
+
+GitHub Actions runs the same checks on Windows and Ubuntu for every relevant push
+and pull request.
 
 ## Free LLM keys
 

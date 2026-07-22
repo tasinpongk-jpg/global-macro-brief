@@ -5,7 +5,7 @@ import hashlib
 import logging
 import re
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import feedparser
 from dateutil import parser as dateparser
@@ -16,6 +16,22 @@ log = logging.getLogger(__name__)
 
 _WS = re.compile(r"\s+")
 _PUNCT = re.compile(r"[^\w\s]", re.UNICODE)
+
+# dateutil intentionally does not guess ambiguous timezone abbreviations. RSS
+# feeds still use them frequently (EIA emits literal "EST" year-round), so map
+# the common North-American abbreviations explicitly. Without this mapping a
+# naive datetime inherits the host timezone, producing different timestamps on
+# GitHub's UTC runners and developer machines in Bangkok.
+_TZINFOS = {
+    "EST": timezone(timedelta(hours=-5)),
+    "EDT": timezone(timedelta(hours=-4)),
+    "CST": timezone(timedelta(hours=-6)),
+    "CDT": timezone(timedelta(hours=-5)),
+    "MST": timezone(timedelta(hours=-7)),
+    "MDT": timezone(timedelta(hours=-6)),
+    "PST": timezone(timedelta(hours=-8)),
+    "PDT": timezone(timedelta(hours=-7)),
+}
 
 
 def _now_iso() -> str:
@@ -38,7 +54,12 @@ def _published_iso(entry) -> str | None:
         val = entry.get(key)
         if val:
             try:
-                return dateparser.parse(val).astimezone(timezone.utc).isoformat()
+                parsed = dateparser.parse(val, tzinfos=_TZINFOS)
+                if parsed.tzinfo is None:
+                    # RSS timestamps without a zone are ambiguous. UTC is the
+                    # only deterministic fallback and matches the CI runtime.
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+                return parsed.astimezone(timezone.utc).isoformat()
             except Exception:  # noqa: BLE001
                 continue
     if entry.get("published_parsed"):
