@@ -118,3 +118,20 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy site --project-name=macro-brief --commit-dirty=true
+
+      # Mirror the same site/ to the older `news-dashboard` Pages project
+      # (news-dashboard-2ob.pages.dev — Cloudflare auto-suffixed the subdomain,
+      # same as macro-brief → macro-brief-buy). It was a one-off direct upload
+      # with nothing feeding it, so it had frozen at its first deploy; this keeps
+      # that bookmarked URL in step with the primary site every morning.
+      # If the project turns out to be named something else, correct the
+      # --project-name here (`wrangler pages project list` prints the real names).
+      # continue-on-error: the mirror must never turn a good brief run red — the
+      # primary deploy above has already published by this point.
+      - name: Deploy to Cloudflare Pages (news-dashboard mirror)
+        continue-on-error: true
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy site --project-name=news-dashboard --commit-dirty=true

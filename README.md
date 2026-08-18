@@ -82,6 +82,13 @@ subdomain was already taken, so Cloudflare auto-assigned `macro-brief-buy`.
 `*.pages.dev` subdomains are globally unique — the project name and the URL can
 differ.)
 
+**Mirror:** https://news-dashboard-2ob.pages.dev — the same `site/` output pushed
+to a second Pages project, `news-dashboard`. That project predates `macro-brief`
+and was created by a one-off direct upload, so it sat frozen at its first deploy;
+the daily workflow now deploys to both, and the two URLs serve identical content.
+The mirror step is `continue-on-error` — if it ever fails, the primary site has
+already published and the run still passes.
+
 1. Push this repo to GitHub.
 2. Create a Cloudflare Pages project named `macro-brief` (or edit the name in
    `.github/workflows/daily.yml`).
