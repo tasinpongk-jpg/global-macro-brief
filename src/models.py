@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS articles (
     sentiment     TEXT,
     instruments   TEXT,            -- JSON array
     importance    INTEGER DEFAULT 3,  -- 1 (minor) .. 5 (market-moving)
-    llm_model     TEXT
+    llm_model     TEXT,
+    attempts      INTEGER NOT NULL DEFAULT 0  -- failed summarization tries
 );
 CREATE INDEX IF NOT EXISTS idx_articles_norm_title ON articles(norm_title);
 CREATE INDEX IF NOT EXISTS idx_articles_published  ON articles(published);
@@ -61,6 +62,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if "importance" not in cols:
         conn.execute("ALTER TABLE articles ADD COLUMN importance INTEGER DEFAULT 3")
         conn.commit()
+    if "attempts" not in cols:
+        conn.execute(
+            "ALTER TABLE articles ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0")
+        conn.commit()
 
 
 def init_db(db_path: Path) -> sqlite3.Connection:
@@ -71,17 +76,28 @@ def init_db(db_path: Path) -> sqlite3.Connection:
     return conn
 
 
-def compact_db(conn: sqlite3.Connection, force_vacuum: bool = False) -> dict:
+def compact_db(conn: sqlite3.Connection, force_vacuum: bool = False,
+               stale_before: str | None = None,
+               max_attempts: int | None = None) -> dict:
     """Keep the DB small enough to back up (GitHub rejects files > 100 MB).
 
     Full article text is only needed as LLM input, so it is dropped once an
-    article has a summary. The freed pages are reclaimed with VACUUM when they
+    article has a summary — or has been given up on (older than `stale_before`
+    or failed `max_attempts` times), since it will never be summarized then.
+    The freed pages are reclaimed with VACUUM when they
     make up a meaningful share of the file (or when forced), and the WAL is
     checkpointed so the single news.db file is complete for the snapshot.
     """
+    cond, params = ["summarized = 1"], []
+    if stale_before:
+        cond.append("COALESCE(published, fetched_at) < ?")
+        params.append(stale_before)
+    if max_attempts:
+        cond.append("attempts >= ?")
+        params.append(max_attempts)
     cleared = conn.execute(
         "UPDATE articles SET raw_text = NULL "
-        "WHERE summarized = 1 AND raw_text IS NOT NULL"
+        f"WHERE raw_text IS NOT NULL AND ({' OR '.join(cond)})", params
     ).rowcount
     conn.commit()
 

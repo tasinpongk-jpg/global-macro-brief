@@ -419,3 +419,7 @@ a:hover { text-decoration: underline; }
   .tldr-list { grid-template-columns: 1fr; }
   .seg-btn { padding: .4rem .45rem; }
 }
+
+/* Title-only cards for articles the LLM has not summarized (yet). */
+.card.pending .card-headline { opacity: .72; }
+.chip-pending { border-style: dashed; opacity: .75; }
