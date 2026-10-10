@@ -104,9 +104,6 @@ feeds:
   - name: Ars Technica
     url: https://feeds.arstechnica.com/arstechnica/index
     topic: Tech/AI
-  - name: VentureBeat AI
-    url: https://venturebeat.com/category/ai/feed/
-    topic: Tech/AI
 
   # ── Thai market (English) ───────────────────────────────────────────────────
   - name: Bangkok Post Business
