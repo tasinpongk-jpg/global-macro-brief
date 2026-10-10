@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write   # push the news.db snapshot branch (durable DB backup)
+  issues: write     # open/close the "daily run failed" alert issue
 
 env:
   # GitHub forces Actions onto Node 24 starting 2026-06-16. Opt in explicitly so
@@ -66,21 +67,26 @@ jobs:
       - name: Run pipeline
         id: pipeline
         env:
+          # Chain (src/config.py DEFAULT_LLM_CHAIN): MiniMax-M2 -> Gemini Flash ->
+          # Mistral. Providers without a secret are skipped; dead or exhausted
+          # ones are dropped for the rest of the run by the circuit breaker.
+          # (Cerebras went paid, Groq retired llama-3.1-8b-instant, and the
+          # Cloudflare token lacks the Workers AI scope — all removed. To re-add
+          # Cloudflare, grant the scope and set LLM_CHAIN + CLOUDFLARE_API_KEY.)
+          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
-          # Cloudflare Workers AI backstop (last cloud fallback). Reuses the
-          # existing Pages token + account id — no new secret. The token must be
-          # granted the "Workers AI" Read+Run scope in Cloudflare for this to
-          # activate; until then the provider is simply skipped.
-          CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # Cap summaries per run so the one-time backlog from newly-added feeds
-          # drains over a few days instead of hammering free-tier LLM quotas.
-          # Well above normal daily new-article volume, so steady state is uncapped.
-          MAX_ARTICLES_PER_RUN: "300"
-        run: python -m src.pipeline
+          # 5 articles per request, 6 requests in flight: ~100 articles/min on
+          # MiniMax. The cap is ~3x normal daily volume so a backlog drains over
+          # a couple of runs; articles older than 7 days are shown by title only.
+          SUMMARY_BATCH_SIZE: "5"
+          LLM_CONCURRENCY: "6"
+          MAX_ARTICLES_PER_RUN: "1000"
+          SUMMARY_MAX_AGE_DAYS: "7"
+        # --strict: exit 3 (after rendering) if nothing could be summarized, so a
+        # silent LLM outage turns the run red and opens an alert issue. The
+        # later steps still run and deploy the title-only site.
+        run: python -m src.pipeline --strict
 
       - name: Save DB cache
         if: always()
@@ -140,3 +146,39 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy site --project-name=macro-brief --commit-dirty=true
+
+  # Alert: open (or comment on) a single tracking issue when the daily run
+  # fails, and close it automatically once a run succeeds again. GitHub only
+  # emails about failed scheduled runs to the last editor of the cron, which is
+  # how 27 red days went unnoticed.
+  alert:
+    needs: build-and-deploy
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RESULT: ${{ needs.build-and-deploy.result }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      LABEL: daily-run-failure
+    steps:
+      - name: Open, update or close the alert issue
+        run: |
+          gh label create "$LABEL" --color B60205 \
+            --description "Opened automatically when the daily brief run fails" 2>/dev/null || true
+          issue=$(gh issue list --label "$LABEL" --state open --json number --jq '.[0].number // empty')
+          if [ "$RESULT" = "success" ]; then
+            if [ -n "$issue" ]; then
+              gh issue close "$issue" --comment "Daily run succeeded again: $RUN_URL"
+            fi
+          elif [ "$RESULT" = "failure" ]; then
+            if [ -n "$issue" ]; then
+              gh issue comment "$issue" --body "Failed again on $(date -u +%F): $RUN_URL"
+            else
+              gh issue create --label "$LABEL" --title "Daily macro brief run is failing" \
+                --body "The scheduled run failed on $(date -u +%F): $RUN_URL
+
+          Check the failing step's log (summarization outage = all LLM providers exhausted; see the run summary). This issue is closed automatically by the next successful run."
+            fi
+          fi

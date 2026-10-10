@@ -18,7 +18,7 @@ from __future__ import annotations
 import math
 import re
 from collections import Counter
-from typing import Callable
+from collections.abc import Callable
 
 _TOKEN = re.compile(r"[A-Za-z0-9$%]+")
 _STOP = set(

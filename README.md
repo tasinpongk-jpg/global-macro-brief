@@ -2,21 +2,31 @@
 
 A free, automated daily news scraper → summarizer → static reading site, built on
 the "Meridian pattern": **RSS-first ingestion → SQLite dedup → LLM summarization
-(Gemini Flash + fallbacks via LiteLLM) → Jinja2 static site → Cloudflare Pages on a
-GitHub Actions cron.** See `Free Daily Global-Macro News Scraper and Summarizer_
+(MiniMax-M2 + Gemini/Mistral fallbacks via LiteLLM) → Jinja2 static site →
+Cloudflare Pages on a GitHub Actions cron.** See `Free Daily Global-Macro News Scraper and Summarizer_
 Architecture and Toolchain Guide.md` for the full research behind these choices.
 
 ## What it does
 
-1. **Ingest** — `feedparser` pulls every feed in `config/feeds.yaml` (English macro
-   sources: OilPrice, Investing.com, CNBC, FXStreet, Fed, ECB, Bank of England,
-   MarketWatch, Bangkok Post, …).
+1. **Ingest** — every feed in `config/feeds.yaml` (English macro sources:
+   OilPrice, Investing.com, CNBC, FXStreet, Fed, ECB, Bank of England, MarketWatch,
+   Bangkok Post, …) is downloaded with a 20 s timeout and an identifying
+   User-Agent (`src/net.py`), then parsed with `feedparser`. Feeds that return
+   nothing are reported as a "Feed health" warning on the Actions run.
 2. **Dedup** — SQLite, keyed on URL hash + normalized title (near-dup detection).
-3. **Extract** — for thin RSS teasers, fetch full text via `trafilatura` →
-   `readability-lxml` cascade.
-4. **Summarize** — LiteLLM calls the `LLM_CHAIN` (default Cerebras → Groq → Gemini →
-   local Ollama), retrying rate-limits before falling through. Output is structured
-   JSON: `{headline, bullets[3-5], topic, sentiment, importance(1-5), instruments[]}`.
+3. **Extract** — for thin RSS teasers, fetch the page (only if robots.txt allows
+   it) and extract full text via a `trafilatura` → `readability-lxml` cascade.
+4. **Summarize** — LiteLLM calls the `LLM_CHAIN` (default MiniMax-M2 → Gemini
+   2.5 Flash → Mistral Small → local Ollama), 5 articles per request and several
+   requests in parallel. Output is structured JSON per article:
+   `{headline, bullets[1-5], topic, sentiment, importance(1-5), instruments[]}`.
+   A per-run circuit breaker drops providers that fail hard (auth, billing,
+   retired model, daily quota) or keep rate-limiting, and stops once every
+   provider is exhausted. MiniMax's `<think>` reasoning is stripped before
+   parsing, Gemini runs with thinking disabled, and a malformed JSON reply is
+   retried once. Articles are retried at most `SUMMARY_MAX_ATTEMPTS` (3) times
+   and only within `SUMMARY_MAX_AGE_DAYS` (7); anything not summarized is still
+   shown on the site by its feed title ("summary pending").
 5. **Cluster** — within each topic, near-duplicate stories from different outlets are
    merged (pure-Python TF cosine on stemmed headlines, no ML deps) into one card with
    an "also covered by" source list. Tunable threshold in `src/cluster.py`.
@@ -36,9 +46,10 @@ python -m venv .venv
 .venv\Scripts\Activate.ps1
 
 pip install --only-binary=litellm -r requirements.txt
-cp .env.example .env          # then paste your GEMINI_API_KEY
+cp .env.example .env          # then paste your MINIMAX_API_KEY (and/or GEMINI_API_KEY)
 
-# Dry run — ingest + render only, no LLM/API key needed:
+# Dry run — ingest + render only, no LLM/API key needed (stories appear by
+# feed title, marked "summary pending"):
 python -m src.pipeline --no-summarize
 
 # Full run (needs a key in .env):
@@ -52,27 +63,37 @@ Open `site/index.html` in a browser.
 
 ## Tests
 
-The test suite is offline: it uses synthetic RSS records and a temporary SQLite
-database, so it needs no API keys and makes no LLM calls.
+The test suite is offline: fake feeds, fake HTTP and a fake LLM provider
+(`tests/fakes.py`) drive the whole pipeline against a temporary SQLite database,
+so it needs no API keys and makes no network calls.
 
 ```bash
+pip install --only-binary=litellm -r requirements-dev.txt
 python -m unittest discover -s tests -v
-python -m compileall -q src tests
+ruff check .
 ```
 
-GitHub Actions runs the same checks on Windows and Ubuntu for every relevant push
-and pull request.
+GitHub Actions runs ruff and the tests (Windows + Ubuntu) on every push and pull
+request that touches anything other than Markdown/docs.
 
-## Free LLM keys
+## LLM keys
 
-- **Gemini (primary):** https://aistudio.google.com/apikey — `GEMINI_API_KEY`
-- **Groq (fallback):** https://console.groq.com/keys — `GROQ_API_KEY`
-- **Cerebras (fallback):** https://cloud.cerebras.ai — `CEREBRAS_API_KEY`
-- **Ollama (local, no key):** `ollama pull qwen2.5` and it's used automatically last.
+- **MiniMax (primary):** https://platform.minimax.io — `MINIMAX_API_KEY`
+  (international endpoint `https://api.minimax.io/v1`; override with
+  `MINIMAX_API_BASE`). ~100 articles/minute with the default batching.
+- **Gemini (fallback):** https://aistudio.google.com/apikey — `GEMINI_API_KEY`.
+  The free tier allows only ~20 requests/day (≈100 articles at 5 per request).
+- **Mistral (fallback):** https://console.mistral.ai — `MISTRAL_API_KEY`.
+- **Ollama (local, no key):** `ollama pull qwen2.5` and it's used automatically
+  last (skipped on CI).
+- Groq, Cerebras and Cloudflare Workers AI are still supported if you add them to
+  `LLM_CHAIN` (Cloudflare needs both `CLOUDFLARE_API_KEY` and
+  `CLOUDFLARE_ACCOUNT_ID`).
 
-Any provider with no key set is skipped. The fallback chain and models are
-configurable via `LLM_CHAIN` in `.env`. **Free-tier limits change often and free
-prompts may be used for training — route confidential content to local Ollama.**
+Any provider with no key set is skipped. The fallback chain, batch size and
+parallelism are configurable in `.env` (see `.env.example`). **Free-tier limits
+change often and free prompts may be used for training — route confidential
+content to local Ollama.**
 
 ## Cloud deploy (GitHub Actions → Cloudflare Pages)
 
@@ -86,11 +107,16 @@ differ.)
 2. Create a Cloudflare Pages project named `macro-brief` (or edit the name in
    `.github/workflows/daily.yml`).
 3. Add repo **Secrets** (Settings → Secrets and variables → Actions):
-   - `GEMINI_API_KEY` (and optionally `GROQ_API_KEY`, `CEREBRAS_API_KEY`)
+   - `MINIMAX_API_KEY` (primary) and optionally `GEMINI_API_KEY`, `MISTRAL_API_KEY`
    - `CLOUDFLARE_API_TOKEN` (Pages:Edit permission)
    - `CLOUDFLARE_ACCOUNT_ID`
-4. The cron runs daily at 23:00 UTC (≈ 06:00 Bangkok). Trigger manually anytime via
-   the **Run workflow** button (workflow_dispatch).
+4. The cron is set for 23:00 UTC (≈ 06:00 Bangkok); GitHub usually starts
+   scheduled runs 1–3 hours late. Trigger manually anytime via the **Run
+   workflow** button (workflow_dispatch).
+5. Failure alerts: if a daily run fails — including a summarization outage where
+   no article could be summarized (`--strict`) — the workflow opens (or comments
+   on) a `daily-run-failure` issue, and closes it after the next good run. The
+   site is still deployed with title-only cards in that case.
 
 The SQLite DB persists across runs three ways, in order of use: a fast **Actions
 cache**, a durable **`db-snapshot` branch** (auto-restored if the cache is ever
@@ -109,15 +135,19 @@ leave the live site stale again.
 
 ```
 config/feeds.yaml        feed list (name, url, topic hint)
-src/config.py            env + feeds loader
-src/models.py            SQLite schema
-src/ingest.py            feedparser + dedup
+src/config.py            env + feeds loader, default LLM chain
+src/models.py            SQLite schema, migrations, compaction
+src/net.py               shared HTTP: User-Agent, timeouts, robots.txt
+src/ingest.py            feed download + feedparser + dedup
 src/extract.py           trafilatura → readability cascade
-src/summarize.py         LiteLLM fallback chain → structured JSON
+src/summarize.py         LiteLLM chain, circuit breaker, batching → JSON
+src/digest.py            daily "mood" line
+src/cluster.py           cross-source story clustering
 src/render.py            Jinja2 static-site builder
 src/pipeline.py          orchestration / CLI entry
 templates/, static/      site theme
-.github/workflows/       daily cron
+.github/workflows/       daily cron + alerting, tests + lint
+tests/                   offline test suite (fakes.py = fake feeds/HTTP/LLM)
 ```
 
 ## Roadmap (from the architecture guide)
