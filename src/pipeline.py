@@ -15,7 +15,7 @@ from .config import load_config
 from .digest import generate_digest
 from .extract import extract_text
 from .ingest import ingest_all
-from .models import init_db
+from .models import compact_db, init_db
 from .render import render_site
 from .summarize import summarize
 
@@ -60,7 +60,8 @@ def summarize_pending(conn, cfg) -> int:
         conn.execute(
             """UPDATE articles
                SET summarized = 1, headline = ?, bullets = ?, topic = ?,
-                   sentiment = ?, importance = ?, instruments = ?, llm_model = ?
+                   sentiment = ?, importance = ?, instruments = ?, llm_model = ?,
+                   raw_text = NULL
                WHERE id = ?""",
             (result["headline"], json.dumps(result["bullets"]), result["topic"],
              result["sentiment"], result["importance"],
@@ -78,6 +79,8 @@ def main() -> None:
                     help="skip the LLM pass (ingest + render only)")
     ap.add_argument("--render-only", action="store_true",
                     help="re-render the site from the existing DB")
+    ap.add_argument("--vacuum", action="store_true",
+                    help="force a VACUUM of the DB at the end of the run")
     args = ap.parse_args()
 
     cfg = load_config()
@@ -90,6 +93,7 @@ def main() -> None:
             generate_digest(conn, cfg)  # one mood line for the latest day
 
     render_site(conn, cfg)
+    compact_db(conn, force_vacuum=args.vacuum)
     conn.close()
     log.info("Done. Open %s/index.html", cfg.site_dir)
 

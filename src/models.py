@@ -1,8 +1,15 @@
 """SQLite storage layer."""
 from __future__ import annotations
 
+import logging
 import sqlite3
 from pathlib import Path
+
+log = logging.getLogger(__name__)
+
+# VACUUM when at least this fraction of the file is free pages. Clearing
+# raw_text leaves holes that SQLite only returns to the OS on VACUUM.
+VACUUM_FREE_RATIO = 0.20
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS articles (
@@ -62,3 +69,32 @@ def init_db(db_path: Path) -> sqlite3.Connection:
     conn.commit()
     _migrate(conn)
     return conn
+
+
+def compact_db(conn: sqlite3.Connection, force_vacuum: bool = False) -> dict:
+    """Keep the DB small enough to back up (GitHub rejects files > 100 MB).
+
+    Full article text is only needed as LLM input, so it is dropped once an
+    article has a summary. The freed pages are reclaimed with VACUUM when they
+    make up a meaningful share of the file (or when forced), and the WAL is
+    checkpointed so the single news.db file is complete for the snapshot.
+    """
+    cleared = conn.execute(
+        "UPDATE articles SET raw_text = NULL "
+        "WHERE summarized = 1 AND raw_text IS NOT NULL"
+    ).rowcount
+    conn.commit()
+
+    page_size = conn.execute("PRAGMA page_size").fetchone()[0]
+    pages = conn.execute("PRAGMA page_count").fetchone()[0]
+    free = conn.execute("PRAGMA freelist_count").fetchone()[0]
+    vacuumed = False
+    if force_vacuum or (pages and free / pages >= VACUUM_FREE_RATIO):
+        conn.execute("VACUUM")
+        vacuumed = True
+    conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    size = conn.execute("PRAGMA page_count").fetchone()[0] * page_size
+    log.info("DB compact: cleared raw_text on %d rows, vacuum=%s, size=%.1f MB",
+             cleared, vacuumed, size / 1e6)
+    return {"cleared": cleared, "vacuumed": vacuumed, "size_bytes": size,
+            "before_bytes": pages * page_size}
