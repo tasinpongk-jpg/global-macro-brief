@@ -21,6 +21,7 @@ concurrency:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
@@ -51,13 +52,19 @@ jobs:
           if [ -f news.db ]; then
             echo "Cache hit — news.db present ($(wc -c < news.db) bytes)."
           elif git fetch origin db-snapshot --depth=1 2>/dev/null; then
-            git show FETCH_HEAD:news.db > news.db
+            # Current format is a gzipped DB; older snapshots hold a raw news.db.
+            if git cat-file -e FETCH_HEAD:news.db.gz 2>/dev/null; then
+              git show FETCH_HEAD:news.db.gz | gunzip > news.db
+            else
+              git show FETCH_HEAD:news.db > news.db
+            fi
             echo "Cache miss — restored news.db from db-snapshot ($(wc -c < news.db) bytes)."
           else
             echo "No cache and no snapshot branch yet — starting from a fresh DB."
           fi
 
       - name: Run pipeline
+        id: pipeline
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
@@ -82,29 +89,41 @@ jobs:
           path: news.db
           key: news-db-${{ github.run_id }}
 
-      # Durable, auto-restorable backup: store news.db on its own orphan branch.
-      # Uses git plumbing so it never touches the working tree or the main branch
-      # — each push replaces the branch with a single fresh commit (no history
-      # bloat). This is the copy the "Seed DB" step above restores from.
+      # Durable, auto-restorable backup: store a gzipped news.db on its own
+      # orphan branch. Uses git plumbing so it never touches the working tree or
+      # the main branch — each push replaces the branch with a single fresh
+      # commit (no history bloat). This is the copy the "Seed DB" step restores.
+      # GitHub rejects files > 100 MB, so the DB is compressed and size-guarded;
+      # the step is non-fatal so a backup problem can never block the deploy.
       - name: Persist DB to snapshot branch
         if: always()
+        continue-on-error: true
         env:
           GIT_AUTHOR_NAME: github-actions[bot]
           GIT_AUTHOR_EMAIL: github-actions[bot]@users.noreply.github.com
           GIT_COMMITTER_NAME: github-actions[bot]
           GIT_COMMITTER_EMAIL: github-actions[bot]@users.noreply.github.com
+          MAX_SNAPSHOT_BYTES: "90000000"   # stay well under GitHub's 100 MB cap
         run: |
           test -f news.db || { echo "No news.db to persist."; exit 0; }
-          blob=$(git hash-object -w news.db)
-          tree=$(printf '100644 blob %s\tnews.db\n' "$blob" | git mktree)
+          gzip -9 -c news.db > news.db.gz
+          raw=$(wc -c < news.db); gz=$(wc -c < news.db.gz)
+          echo "news.db: ${raw} bytes, news.db.gz: ${gz} bytes"
+          if [ "$gz" -gt "$MAX_SNAPSHOT_BYTES" ]; then
+            echo "::warning title=DB snapshot skipped::news.db.gz is ${gz} bytes (> ${MAX_SNAPSHOT_BYTES}); not pushing to db-snapshot. The Actions cache and artifact still hold the DB."
+            exit 0
+          fi
+          blob=$(git hash-object -w news.db.gz)
+          tree=$(printf '100644 blob %s\tnews.db.gz\n' "$blob" | git mktree)
           commit=$(git commit-tree "$tree" -m "DB snapshot (run ${GITHUB_RUN_ID})")
           git push -f origin "$commit:refs/heads/db-snapshot"
-          echo "Pushed news.db to db-snapshot ($(wc -c < news.db) bytes)."
+          echo "Pushed news.db.gz to db-snapshot (${gz} bytes)."
 
       # 90-day insurance copy, downloadable from the run page if you ever need to
       # re-seed by hand (e.g. the snapshot branch was deleted).
       - name: Backup DB (artifact)
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: news-db
@@ -112,7 +131,10 @@ jobs:
           retention-days: 90
           overwrite: true
 
+      # Deploy whenever a site was built, even if the pipeline or a backup step
+      # failed: a stale DB backup must never leave the public site stale too.
       - name: Deploy to Cloudflare Pages
+        if: ${{ !cancelled() && hashFiles('site/index.html') != '' }}
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}

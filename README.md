@@ -95,7 +95,15 @@ differ.)
 The SQLite DB persists across runs three ways, in order of use: a fast **Actions
 cache**, a durable **`db-snapshot` branch** (auto-restored if the cache is ever
 evicted), and a 90-day **artifact** for manual recovery. The `db-snapshot` branch
-holds a single binary `news.db` and is force-pushed each run — don't merge it.
+holds a single gzipped `news.db.gz` and is force-pushed each run — don't merge it.
+(Older snapshots held a raw `news.db`; the restore step understands both.)
+
+Keeping the DB small: full article text is only kept until an article has been
+summarized, then cleared; the pipeline VACUUMs automatically when ≥20% of the file
+is free pages (`python -m src.pipeline --vacuum` forces it). The snapshot push is
+size-guarded (skipped with a warning above 90 MB compressed) and non-fatal, and
+the Cloudflare deploy runs whenever a site was built — a backup problem can never
+leave the live site stale again.
 
 ## Project layout
 
