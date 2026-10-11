@@ -5,11 +5,13 @@ import hashlib
 import logging
 import re
 import sqlite3
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 import feedparser
+import requests
 from dateutil import parser as dateparser
 
+from . import net
 from .config import Config, Feed
 
 log = logging.getLogger(__name__)
@@ -35,7 +37,7 @@ _TZINFOS = {
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def url_hash(url: str) -> str:
@@ -58,13 +60,13 @@ def _published_iso(entry) -> str | None:
                 if parsed.tzinfo is None:
                     # RSS timestamps without a zone are ambiguous. UTC is the
                     # only deterministic fallback and matches the CI runtime.
-                    parsed = parsed.replace(tzinfo=timezone.utc)
-                return parsed.astimezone(timezone.utc).isoformat()
+                    parsed = parsed.replace(tzinfo=UTC)
+                return parsed.astimezone(UTC).isoformat()
             except Exception:  # noqa: BLE001
                 continue
     if entry.get("published_parsed"):
         try:
-            return datetime(*entry.published_parsed[:6], tzinfo=timezone.utc).isoformat()
+            return datetime(*entry.published_parsed[:6], tzinfo=UTC).isoformat()
         except Exception:  # noqa: BLE001
             pass
     return None
@@ -90,9 +92,29 @@ def _is_dup(conn: sqlite3.Connection, uh: str, norm_title: str) -> bool:
     return False
 
 
+def fetch_feed(url: str):
+    """Download a feed with a timeout + real User-Agent, then parse the bytes.
+
+    feedparser's own fetcher has no timeout, so one hung host could stall the
+    whole run; it also can't tell a bot wall (HTML 429 page) from a feed.
+    """
+    resp = net.get(url, headers={
+        "Accept": "application/rss+xml, application/atom+xml, "
+                  "application/xml;q=0.9, text/xml;q=0.9, */*;q=0.5",
+    })
+    return feedparser.parse(
+        resp.content,
+        response_headers={"content-type": resp.headers.get("content-type", "")},
+    )
+
+
 def ingest_feed(conn: sqlite3.Connection, feed: Feed) -> tuple[int, int]:
     """Return (new_articles_added, entries_seen_in_feed)."""
-    parsed = feedparser.parse(feed.url)
+    try:
+        parsed = fetch_feed(feed.url)
+    except requests.RequestException as e:
+        log.warning("Feed failed: %s (%s)", feed.name, e)
+        return 0, 0
     if parsed.bozo and not parsed.entries:
         log.warning("Feed failed: %s (%s)", feed.name, getattr(parsed, "bozo_exception", ""))
         return 0, 0

@@ -1,18 +1,17 @@
 name: Tests
 
+# Run on every push/PR that touches anything but prose — templates, static
+# assets, feed config and workflows all affect the build too.
 on:
   push:
-    paths:
-      - "src/**"
-      - "tests/**"
-      - "requirements.txt"
-      - ".github/workflows/tests.yml"
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
   pull_request:
-    paths:
-      - "src/**"
-      - "tests/**"
-      - "requirements.txt"
-      - ".github/workflows/tests.yml"
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+  workflow_dispatch: {}
 
 permissions:
   contents: read
@@ -21,6 +20,32 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ruff
+        run: python -m pip install "$(grep '^ruff==' requirements-dev.txt)"
+      - name: Ruff
+        run: ruff check --output-format=github .
+      - name: Validate YAML (feeds + workflows)
+        run: |
+          python -m pip install PyYAML==6.0.3
+          python - <<'PY'
+          import glob, yaml
+          for f in ["config/feeds.yaml", *glob.glob(".github/workflows/*.yml")]:
+              yaml.safe_load(open(f, encoding="utf-8"))
+          feeds = yaml.safe_load(open("config/feeds.yaml", encoding="utf-8"))["feeds"]
+          assert feeds and all({"name", "url"} <= set(x) for x in feeds), "bad feed entry"
+          names = [x["name"] for x in feeds]
+          assert len(names) == len(set(names)), "duplicate feed names"
+          print(f"OK: {len(feeds)} feeds")
+          PY
+
   test:
     name: ${{ matrix.os }} / Python ${{ matrix.python-version }}
     runs-on: ${{ matrix.os }}
@@ -37,10 +62,10 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-          cache-dependency-path: requirements.txt
+          cache-dependency-path: requirements*.txt
 
       - name: Install dependencies
-        run: python -m pip install --only-binary=litellm -r requirements.txt
+        run: python -m pip install --only-binary=litellm -r requirements-dev.txt
 
       - name: Verify dependency consistency
         run: python -m pip check

@@ -119,7 +119,7 @@
       </h2>
       <div class="cards">
         {% for s in g.cards %}
-        <article class="card sent-{{ s.sentiment }}{% if s.cid == lead_cid %} lead{% endif %}" id="{{ s.cid }}" style="--i: {{ loop.index0 }}"
+        <article class="card sent-{{ s.sentiment }}{% if s.pending %} pending{% endif %}{% if s.cid == lead_cid %} lead{% endif %}" id="{{ s.cid }}" style="--i: {{ loop.index0 }}"
                  data-ts="{{ s.ts or '' }}"
                  data-instruments="{{ s.instruments | map('upper') | join(',') }}"
                  data-size="{{ s.size }}"
@@ -134,7 +134,7 @@
                 <span class="src">{{ s.source }}</span>
                 {% if s.cid == most_covered_cid %}<span class="chip chip-fire" title="most covered today">🔥 most covered</span>{% endif %}
                 {% if s.size > 1 %}<span class="chip chip-more">+{{ s.size - 1 }}</span>{% endif %}
-                <span class="chip chip-sent">{{ s.sentiment }}</span>
+                {% if s.pending %}<span class="chip chip-pending" title="AI summary not available yet — headline from the feed">summary pending</span>{% else %}<span class="chip chip-sent">{{ s.sentiment }}</span>{% endif %}
                 {% for i in s.instruments %}<button type="button" class="sym" data-sym="{{ i | upper }}" title="Pin {{ i }}">{{ i }}</button>{% endfor %}
               </span>
             </span>

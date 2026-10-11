@@ -7,11 +7,11 @@ hero then falls back to the mechanical top-5 list with no mood line.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from .config import Config
 from .render import _day_key
-from .summarize import complete_json
+from .summarize import ProviderPool, complete_json
 
 log = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ def _latest_day_stories(conn):
     return day, todays[:12]
 
 
-def generate_digest(conn, cfg: Config) -> None:
+def generate_digest(conn, cfg: Config, pool: ProviderPool | None = None) -> None:
     """Write the latest day's mood line if not already done. One LLM call/day."""
     try:
         day, stories = _latest_day_stories(conn)
@@ -52,14 +52,14 @@ def generate_digest(conn, cfg: Config) -> None:
             for s in stories
         )
         result = complete_json(_SYSTEM, f"Date {day} top stories:\n{lines}",
-                               cfg.llm_chain)
+                               cfg.llm_chain, pool=pool)
         mood = ((result or {}).get("mood") or "").strip()
         if not mood:
             log.warning("Digest: no mood produced for %s", day)
             return
         conn.execute(
             "INSERT OR REPLACE INTO digests (day, mood, generated_at) VALUES (?,?,?)",
-            (day, mood[:200], datetime.now(timezone.utc).isoformat()),
+            (day, mood[:200], datetime.now(UTC).isoformat()),
         )
         conn.commit()
         log.info("Digest mood for %s: %s", day, mood)

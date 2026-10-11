@@ -11,7 +11,7 @@ import logging
 import shutil
 import sqlite3
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -38,12 +38,23 @@ def _day_key(iso: str | None) -> str:
     if not iso:
         return "undated"
     try:
-        return datetime.fromisoformat(iso).astimezone(timezone.utc).strftime("%Y-%m-%d")
+        return datetime.fromisoformat(iso).astimezone(UTC).strftime("%Y-%m-%d")
     except Exception:  # noqa: BLE001
         return "undated"
 
 
 def _row_to_story(r: sqlite3.Row) -> dict:
+    """Card data for one article. Unsummarized articles are shown by title only
+    (flagged `pending`, lowest importance) so an LLM outage never blanks the site.
+    """
+    if not r["summarized"]:
+        return {
+            "headline": r["title"] or "(untitled)", "bullets": [],
+            "topic": r["feed_topic"] or "Other", "sentiment": "neutral",
+            "importance": 1, "instruments": [], "pending": True,
+            "url": r["url"], "source": r["source"], "published": r["published"],
+            "ts": r["published"] or r["fetched_at"],
+        }
     keys = r.keys()
     return {
         "headline": r["headline"] or r["title"] or "(untitled)",
@@ -52,6 +63,7 @@ def _row_to_story(r: sqlite3.Row) -> dict:
         "sentiment": r["sentiment"] or "neutral",
         "importance": (r["importance"] if "importance" in keys and r["importance"] else 3),
         "instruments": json.loads(r["instruments"]) if r["instruments"] else [],
+        "pending": False,
         "url": r["url"],
         "source": r["source"],
         "published": r["published"],
@@ -61,11 +73,13 @@ def _row_to_story(r: sqlite3.Row) -> dict:
 
 def _build_cluster(members: list[dict]) -> dict:
     """Pick a primary story for a cluster and attach the other sources."""
-    # Primary = highest importance, then earliest published, then most bullets.
-    primary = sorted(
+    # Primary = summarized first, then highest importance, earliest published,
+    # most bullets.
+    primary = min(
         members,
-        key=lambda s: (-s["importance"], s["published"] or "9999", -len(s["bullets"])),
-    )[0]
+        key=lambda s: (s["pending"], -s["importance"], s["published"] or "9999",
+                       -len(s["bullets"])),
+    )
     others = [m for m in members if m is not primary]
     # De-dup the "also covered by" list by source name.
     seen, also = set(), []
@@ -118,7 +132,8 @@ def _tally(groups) -> dict:
     counts = {"bullish": 0, "bearish": 0, "mixed": 0, "neutral": 0}
     for _, items in groups:
         for c in items:
-            counts[c["sentiment"]] = counts.get(c["sentiment"], 0) + 1
+            if not c["pending"]:
+                counts[c["sentiment"]] = counts.get(c["sentiment"], 0) + 1
     return counts
 
 
@@ -126,7 +141,8 @@ def _sent_counts(items) -> dict:
     """Per-group sentiment split for the mini sentiment bar."""
     c = {"bullish": 0, "bearish": 0, "mixed": 0, "neutral": 0}
     for it in items:
-        c[it["sentiment"]] = c.get(it["sentiment"], 0) + 1
+        if not it["pending"]:
+            c[it["sentiment"]] = c.get(it["sentiment"], 0) + 1
     return c
 
 
@@ -152,9 +168,12 @@ def render_site(conn: sqlite3.Connection, cfg: Config, days: int = 21) -> None:
     if STATIC.exists():
         shutil.copytree(STATIC, cfg.site_dir / "static", dirs_exist_ok=True)
 
+    # Every article is rendered; unsummarized ones appear as title-only cards.
     rows = conn.execute(
-        """SELECT * FROM articles
-           WHERE summarized = 1
+        """SELECT id, url, title, source, feed_topic, published, fetched_at,
+                  summarized, headline, bullets, topic, sentiment, importance,
+                  instruments
+           FROM articles
            ORDER BY COALESCE(published, fetched_at) DESC"""
     ).fetchall()
 
@@ -184,7 +203,7 @@ def render_site(conn: sqlite3.Connection, cfg: Config, days: int = 21) -> None:
 
     env = _env()
     dash = env.get_template("dashboard.html")
-    generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    generated = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
 
     # Mood lines for the TL;DR hero, keyed by day (may be absent → no mood shown).
     moods = {r["day"]: r["mood"] for r in
@@ -203,8 +222,8 @@ def render_site(conn: sqlite3.Connection, cfg: Config, days: int = 21) -> None:
             enriched.append({"topic": topic, "cards": gi, "sent": _sent_counts(gi)})
             flat.extend(gi)
         # TL;DR top 5, the lead (hero) story, and the most-covered cluster.
-        top5 = sorted(flat, key=lambda c: (c["max_importance"], c["size"]),
-                      reverse=True)[:5]
+        top5 = sorted((c for c in flat if not c["pending"]),
+                      key=lambda c: (c["max_importance"], c["size"]), reverse=True)[:5]
         lead_cid = top5[0]["cid"] if top5 else None
         most_covered_cid = (max(flat, key=lambda c: c["size"])["cid"]
                             if flat and max(c["size"] for c in flat) > 1 else None)
