@@ -34,10 +34,8 @@ jobs:
       - name: Install deps
         run: pip install --only-binary=litellm -r requirements.txt
 
-      # Persist the SQLite DB across runs so dedup survives and each daily run
-      # only summarizes *new* articles. Split restore/save so the DB is saved
-      # even if a later step (e.g. deploy) fails — the cold summarize cost is
-      # then paid only once.
+      # Persist the SQLite DB across runs so dedup and headline history survive.
+      # Split restore/save so the DB is saved even if a later step fails.
       - name: Restore DB cache
         uses: actions/cache/restore@v4
         with:
@@ -47,7 +45,7 @@ jobs:
 
       # If the cache was evicted (7-day inactivity / 10 GB LRU), fall back to the
       # durable copy kept on the db-snapshot branch. Without this, a lost cache
-      # means starting from an empty DB: lost history + a costly cold re-summarize.
+      # means starting from an empty DB and losing headline history.
       - name: Seed DB from snapshot branch (cache fallback)
         run: |
           if [ -f news.db ]; then
@@ -64,29 +62,8 @@ jobs:
             echo "No cache and no snapshot branch yet — starting from a fresh DB."
           fi
 
-      - name: Run pipeline
-        id: pipeline
-        env:
-          # Chain (src/config.py DEFAULT_LLM_CHAIN): MiniMax-M2 -> Gemini Flash ->
-          # Mistral. Providers without a secret are skipped; dead or exhausted
-          # ones are dropped for the rest of the run by the circuit breaker.
-          # (Cerebras went paid, Groq retired llama-3.1-8b-instant, and the
-          # Cloudflare token lacks the Workers AI scope — all removed. To re-add
-          # Cloudflare, grant the scope and set LLM_CHAIN + CLOUDFLARE_API_KEY.)
-          MINIMAX_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
-          # 5 articles per request, 6 requests in flight: ~100 articles/min on
-          # MiniMax. The cap is ~3x normal daily volume so a backlog drains over
-          # a couple of runs; articles older than 7 days are shown by title only.
-          SUMMARY_BATCH_SIZE: "5"
-          LLM_CONCURRENCY: "6"
-          MAX_ARTICLES_PER_RUN: "1000"
-          SUMMARY_MAX_AGE_DAYS: "7"
-        # --strict: exit 3 (after rendering) if nothing could be summarized, so a
-        # silent LLM outage turns the run red and opens an alert issue. The
-        # later steps still run and deploy the title-only site.
-        run: python -m src.pipeline --strict
+      - name: Fetch and export headlines without an LLM
+        run: python -m src.pipeline --no-summarize
 
       - name: Save DB cache
         if: always()
@@ -179,6 +156,6 @@ jobs:
               gh issue create --label "$LABEL" --title "Daily macro brief run is failing" \
                 --body "The scheduled run failed on $(date -u +%F): $RUN_URL
 
-          Check the failing step's log (summarization outage = all LLM providers exhausted; see the run summary). This issue is closed automatically by the next successful run."
+          Check the failing step’s log for the cause. This issue is closed automatically by the next successful run."
             fi
           fi
