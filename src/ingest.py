@@ -24,7 +24,7 @@ _ISO_PUBLICATION = re.compile(
     r"(?:\.[0-9]+)?(?:[Zz]|[+-](?:[01][0-9]|2[0-3]):?[0-5][0-9])"
 )
 _RFC_PUBLICATION = re.compile(
-    r"(?:[A-Za-z]{3}, +)?[0-9]{1,2} +[A-Za-z]{3} +[0-9]{4} +"
+    r"(?:[A-Za-z]{3}, +)?[0-9]{1,2} +[A-Za-z]{3} +(?P<year>[0-9]{4}) +"
     r"[0-9]{2}:[0-9]{2}:[0-9]{2} +(?:[A-Za-z]{1,3}|[+-](?:[01][0-9]|2[0-3])[0-5][0-9])"
 )
 
@@ -87,8 +87,11 @@ def _export_published_iso(entry) -> str | None:
     try:
         if _ISO_PUBLICATION.fullmatch(value) and not value.endswith(("-00:00", "-0000")):
             published = datetime.fromisoformat(value.upper())
-        elif _RFC_PUBLICATION.fullmatch(value):
+        elif rfc_match := _RFC_PUBLICATION.fullmatch(value):
             published = parsedate_to_datetime(value)
+            # The email parser can pivot even a zero-padded four-digit year.
+            if published.year != int(rfc_match["year"]):
+                return None
         else:
             return None
         if published.tzinfo is not None:

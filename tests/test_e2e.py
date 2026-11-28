@@ -194,6 +194,36 @@ class PublicationProvenanceTests(unittest.TestCase):
             conn.close()
 
 
+    def test_rejects_rfc_year_pivot_before_utc_conversion(self) -> None:
+        items = [
+            {"title": "Ancient publication", "link": "https://a.test/ancient",
+             "date": "Sat, 28 Nov 0026 01:00:00 GMT", "desc": ""},
+            {"title": "Valid year boundary", "link": "https://a.test/current",
+             "date": "Fri, 01 Jan 2027 01:00:00 +0700", "desc": ""},
+        ]
+        feed = Feed("Fake", "https://a.test/feed.xml")
+        with TempDir() as root:
+            cfg = make_config(root)
+            conn = init_db(cfg.db_path)
+            with patch("src.net._session.get", return_value=http_response(rss(items))):
+                self.assertEqual(ingest_feed(conn, feed), (2, 2))
+            with patch("src.render.datetime", wraps=datetime) as clock:
+                clock.now.return_value = datetime(2026, 11, 28, 2, tzinfo=UTC)
+                render_site(conn, cfg)
+                path = cfg.site_dir / "data/global-intel.json"
+                november = json.loads(path.read_text(encoding="utf-8"))
+                clock.now.return_value = datetime(2026, 12, 31, 20, tzinfo=UTC)
+                render_site(conn, cfg)
+                december = json.loads(path.read_text(encoding="utf-8"))
+            conn.close()
+
+        self.assertEqual(november["items"], [])
+        self.assertEqual(december["items"], [
+            {"title": "Valid year boundary", "source": "Fake", "url": "https://a.test/current",
+             "published": "2026-12-31T18:00:00+00:00"},
+        ])
+
+
 class StrictExitTests(unittest.TestCase):
     def test_strict_exits_3_on_outage(self) -> None:
         with TempDir() as root:
