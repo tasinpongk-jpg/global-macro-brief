@@ -1,8 +1,9 @@
 """Whole-pipeline tests with fake feeds, fake HTTP and a fake LLM provider."""
 from __future__ import annotations
 
+import json
 import unittest
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from email.utils import format_datetime
 from unittest.mock import patch
 
@@ -11,17 +12,18 @@ import litellm
 from src import pipeline, summarize
 from src.config import Feed
 from src.digest import generate_digest
-from src.ingest import ingest_all
+from src.ingest import ingest_all, ingest_feed, url_hash
 from src.models import compact_db, init_db
 from src.render import render_site
 from src.summarize import ProviderPool
 from tests.fakes import FakeLLM, TempDir, http_response, make_config, response, rss
 
 NOW = datetime.now(UTC)
+FEED_DAY = NOW.replace(hour=12, minute=0, second=0, microsecond=0) - timedelta(days=1)
 
 
 def _date(hours_ago: float) -> str:
-    return format_datetime(NOW - timedelta(hours=hours_ago))
+    return format_datetime(FEED_DAY - timedelta(hours=hours_ago))
 
 
 TITLES = ["Brent crude jumps on supply outage", "Fed signals patience on rates",
@@ -39,7 +41,9 @@ FEED_ITEMS.append({"title": "Old story", "link": "https://example.com/old",
 
 def fake_get(url, **kwargs):
     if url.endswith("/feed.xml"):
-        return http_response(rss(FEED_ITEMS))
+        return http_response(rss(FEED_ITEMS).replace(
+            b"<title>Fake</title>", b"<title>Fake</title><language>en-US</language>",
+        ))
     if url.endswith("/broken.xml"):
         return http_response(b"<html>blocked</html>", status=429, ctype="text/html")
     raise AssertionError(f"unexpected fetch {url}")
@@ -76,6 +80,18 @@ class PipelineEndToEndTests(unittest.TestCase):
             index = (cfg.site_dir / "index.html").read_text(encoding="utf-8")
             self.assertIn("Summary: Gold hits record high", index)
             self.assertIn("Risk-on as the dollar firms.", index)
+            path = cfg.site_dir / "data/global-intel.json"
+            first = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(first["items"], [
+                {"title": t, "url": FEED_ITEMS[i]["link"], "source": "Fake", "language": "en",
+                 "published": (FEED_DAY - timedelta(hours=i + 1)).isoformat()}
+                for i, t in enumerate(TITLES)
+            ])
+            conn.execute("UPDATE articles SET headline = 'Different AI headline', importance = 1")
+            render_site(conn, cfg)
+            second = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(second["editionId"], first["editionId"])
+            self.assertEqual(second["items"], first["items"])
             # raw text is dropped once summarized (and for the stale article)
             left = conn.execute(
                 "SELECT COUNT(*) FROM articles WHERE raw_text IS NOT NULL").fetchone()[0]
@@ -117,19 +133,112 @@ class PipelineEndToEndTests(unittest.TestCase):
             conn.close()
 
 
+class PublicationProvenanceTests(unittest.TestCase):
+    def test_exports_only_full_original_publication_dates(self) -> None:
+        timestamp = _date(1)
+        atom_published = FEED_DAY - timedelta(hours=2)
+        atom_timestamp = atom_published.astimezone(timezone(timedelta(hours=7))).isoformat()
+        site_timestamp = atom_published.isoformat()
+        old_display = (FEED_DAY - timedelta(hours=3)).isoformat()
+        articles = [
+            ("rss", f"<pubDate>{timestamp}</pubDate>"),
+            ("iso", f"<published>{atom_timestamp}</published>"),
+            ("updated", f"<updated>{atom_timestamp}</updated>"),
+            ("created", f"<created>{atom_timestamp}</created>"),
+            ("invalid", f"<pubDate>invalid</pubDate><updated>{atom_timestamp}</updated>"),
+            ("impossible-day", "<pubDate>2026-11-31T00:00:00Z</pubDate>"
+                               f"<updated>{atom_timestamp}</updated>"),
+            ("partial", f"<pubDate>{FEED_DAY:%Y-%m-%d}</pubDate>"
+                        f"<created>{atom_timestamp}</created>"),
+            ("no-zone", f"<pubDate>{FEED_DAY:%Y-%m-%dT%H:%M:%S}</pubDate>"),
+            ("unknown-zone", f"<pubDate>{FEED_DAY:%Y-%m-%dT%H:%M:%S}-00:00</pubDate>"),
+            ("repeat", f"<pubDate>{timestamp}</pubDate>"),
+            ("other-source", f"<pubDate>{timestamp}</pubDate>"),
+            ("changed-title", f"<pubDate>{timestamp}</pubDate>"),
+        ]
+        entries = "".join(
+            f"<item><title>{name}</title><link>https://a.test/{name}</link>{dates}</item>"
+            for name, dates in articles
+        )
+        body = f"<rss version='2.0'><channel><title>Fake</title>{entries}</channel></rss>".encode()
+        feed = Feed("Fake", "https://a.test/feed.xml")
+        with TempDir() as root:
+            cfg = make_config(root)
+            conn = init_db(cfg.db_path)
+            conn.executemany(
+                "INSERT INTO articles (url_hash, url, title, source, published, fetched_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                [(url_hash(f"https://a.test/{name}"), f"https://a.test/{name}",
+                  "earlier title" if name == "changed-title" else name, source,
+                  old_display, old_display)
+                 for name, source in [("repeat", "Fake"), ("other-source", "Different"),
+                                      ("unobserved", "Fake"), ("changed-title", "Fake")]],
+            )
+            with patch("src.net._session.get", return_value=http_response(body)):
+                self.assertEqual(ingest_feed(conn, feed), (9, 12))
+            render_site(conn, cfg)
+            path = cfg.site_dir / "data/global-intel.json"
+            export = json.loads(path.read_text(encoding="utf-8"))
+            timestamps = {item["title"]: item["published"] for item in export["items"]}
+            self.assertEqual(timestamps, {
+                "rss": (FEED_DAY - timedelta(hours=1)).isoformat(),
+                "iso": site_timestamp,
+                "repeat": (FEED_DAY - timedelta(hours=1)).isoformat(),
+            })
+            stored = dict(conn.execute("SELECT title, published FROM articles"))
+            self.assertEqual(stored["updated"], site_timestamp)
+            self.assertEqual(stored["created"], site_timestamp)
+            self.assertEqual(stored["invalid"], site_timestamp)
+            self.assertEqual(stored["repeat"], old_display)
+            self.assertIsNotNone(stored["partial"])
+            conn.close()
+
+
+    def test_rejects_rfc_year_pivot_before_utc_conversion(self) -> None:
+        items = [
+            {"title": "Ancient publication", "link": "https://a.test/ancient",
+             "date": "Sat, 28 Nov 0026 01:00:00 GMT", "desc": ""},
+            {"title": "Valid year boundary", "link": "https://a.test/current",
+             "date": "Fri, 01 Jan 2027 01:00:00 +0700", "desc": ""},
+        ]
+        feed = Feed("Fake", "https://a.test/feed.xml")
+        with TempDir() as root:
+            cfg = make_config(root)
+            conn = init_db(cfg.db_path)
+            with patch("src.net._session.get", return_value=http_response(rss(items))):
+                self.assertEqual(ingest_feed(conn, feed), (2, 2))
+            with patch("src.render.datetime", wraps=datetime) as clock:
+                clock.now.return_value = datetime(2026, 11, 28, 2, tzinfo=UTC)
+                render_site(conn, cfg)
+                path = cfg.site_dir / "data/global-intel.json"
+                november = json.loads(path.read_text(encoding="utf-8"))
+                clock.now.return_value = datetime(2026, 12, 31, 20, tzinfo=UTC)
+                render_site(conn, cfg)
+                december = json.loads(path.read_text(encoding="utf-8"))
+            conn.close()
+
+        self.assertEqual(november["items"], [])
+        self.assertEqual(december["items"], [
+            {"title": "Valid year boundary", "source": "Fake", "url": "https://a.test/current",
+             "published": "2026-12-31T18:00:00+00:00"},
+        ])
+
+
 class StrictExitTests(unittest.TestCase):
     def test_strict_exits_3_on_outage(self) -> None:
         with TempDir() as root:
-            cfg = make_config(root)
-            outage = pipeline.SummaryStats(selected=5, summarized=0, exhausted=True)
+            cfg = make_config(root, feeds=[Feed("Fake", "https://f.test/feed.xml")], llm_chain=[])
             with patch.object(pipeline, "load_config", return_value=cfg), \
-                    patch.object(pipeline, "ingest_all"), \
-                    patch.object(pipeline, "generate_digest"), \
-                    patch.object(pipeline, "summarize_pending", return_value=outage), \
+                    patch("src.net._session.get", side_effect=fake_get), \
+                    patch.object(summarize.litellm, "completion") as completion, \
                     patch("sys.argv", ["pipeline", "--strict"]), \
                     self.assertRaises(SystemExit) as cm:
                 pipeline.main()
             self.assertEqual(cm.exception.code, 3)
+            completion.assert_not_called()
+            path = cfg.site_dir / "data/global-intel.json"
+            export = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual([item["title"] for item in export["items"]], TITLES)
             self.assertTrue((cfg.site_dir / "index.html").exists())  # rendered first
 
 
