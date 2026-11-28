@@ -18,6 +18,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from .cluster import cluster
 from .config import TOPIC_ORDER, Config
+from .global_intel import write_global_intel
 
 log = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parent.parent
@@ -170,12 +171,15 @@ def render_site(conn: sqlite3.Connection, cfg: Config, days: int = 21) -> None:
 
     # Every article is rendered; unsummarized ones appear as title-only cards.
     rows = conn.execute(
-        """SELECT id, url, title, source, feed_topic, published, fetched_at,
+        """SELECT id, url, title, source, language, feed_topic, published, fetched_at,
                   summarized, headline, bullets, topic, sentiment, importance,
                   instruments
            FROM articles
            ORDER BY COALESCE(published, fetched_at) DESC"""
     ).fetchall()
+
+    now = datetime.now(UTC)
+    write_global_intel(rows, cfg.site_dir, now)
 
     by_day: dict[str, list[dict]] = defaultdict(list)
     for r in rows:
@@ -203,7 +207,7 @@ def render_site(conn: sqlite3.Connection, cfg: Config, days: int = 21) -> None:
 
     env = _env()
     dash = env.get_template("dashboard.html")
-    generated = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
+    generated = now.strftime("%Y-%m-%d %H:%M UTC")
 
     # Mood lines for the TL;DR hero, keyed by day (may be absent → no mood shown).
     moods = {r["day"]: r["mood"] for r in

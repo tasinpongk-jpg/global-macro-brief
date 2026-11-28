@@ -72,6 +72,13 @@ def _published_iso(entry) -> str | None:
     return None
 
 
+def _entry_language(entry, feed_metadata) -> str | None:
+    language = (entry.get("language") or (entry.get("title_detail") or {}).get("language")
+                or feed_metadata.get("language") or "")
+    primary = language.strip().lower().replace("_", "-").split("-", 1)[0]
+    return primary if primary in {"en", "th"} else None
+
+
 def _entry_text(entry) -> str:
     """Text already present in the feed (often a teaser/summary)."""
     if entry.get("content"):
@@ -132,11 +139,11 @@ def ingest_feed(conn: sqlite3.Connection, feed: Feed) -> tuple[int, int]:
         try:
             conn.execute(
                 """INSERT INTO articles
-                   (url_hash, norm_title, url, title, source, feed_topic,
+                   (url_hash, norm_title, url, title, source, language, feed_topic,
                     published, fetched_at, raw_text, summarized)
-                   VALUES (?,?,?,?,?,?,?,?,?,0)""",
-                (uh, norm, url, title, feed.name, feed.topic,
-                 _published_iso(entry), _now_iso(), _entry_text(entry)),
+                   VALUES (?,?,?,?,?,?,?,?,?,?,0)""",
+                (uh, norm, url, title, feed.name, _entry_language(entry, parsed.feed),
+                 feed.topic, _published_iso(entry), _now_iso(), _entry_text(entry)),
             )
             added += 1
         except sqlite3.IntegrityError:

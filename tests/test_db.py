@@ -18,6 +18,21 @@ def _insert(conn, i: int, summarized: int, text: str) -> None:
     )
 
 
+class MigrationTests(unittest.TestCase):
+    def test_adds_optional_language_to_existing_articles(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "t.db"
+            conn = init_db(path)
+            conn.execute("ALTER TABLE articles DROP COLUMN language")
+            _insert(conn, 1, summarized=0, text="body")
+            conn.commit()
+            conn.close()
+            conn = init_db(path)
+            row = conn.execute("SELECT title, language FROM articles").fetchone()
+            self.assertEqual(tuple(row), ("T1", None))
+            conn.close()
+
+
 class CompactDbTests(unittest.TestCase):
     def test_clears_summarized_text_and_vacuums(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

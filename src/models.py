@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS articles (
     url           TEXT NOT NULL,
     title         TEXT,
     source        TEXT,
+    language      TEXT,
     feed_topic    TEXT,
     published     TEXT,            -- ISO8601
     fetched_at    TEXT NOT NULL,   -- ISO8601
@@ -65,6 +66,9 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if "attempts" not in cols:
         conn.execute(
             "ALTER TABLE articles ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0")
+        conn.commit()
+    if "language" not in cols:
+        conn.execute("ALTER TABLE articles ADD COLUMN language TEXT")
         conn.commit()
 
 

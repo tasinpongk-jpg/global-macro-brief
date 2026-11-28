@@ -61,6 +61,25 @@ python -m src.pipeline --render-only
 
 Open `site/index.html` in a browser.
 
+## Headline export
+
+Each build writes `site/data/global-intel.json`, published with the site at
+https://macro-brief-buy.pages.dev/data/global-intel.json. Schema `1` contains
+`editionId`, `generatedAt`, and `items`. Items use the stored RSS title and link,
+feed name, and UTC publication timestamp. English and Thai language tags come
+from feed metadata when available. Older database rows may lack language metadata.
+
+The export keeps up to 500 headlines from the previous seven days, ordered by
+publication time, then URL, both descending. Entries with missing, invalid,
+future, or stale publication timestamps, invalid or non-HTTPS URLs, or blank or
+oversized fields are excluded. Limits are 512 characters for titles, 128 for
+sources, and 2,048 for URLs. There is no fetch-time fallback for missing dates.
+
+The edition ID is the lowercase SHA-256 of the items array encoded as compact
+UTF-8 JSON with sorted object keys and literal Unicode. A new render time or AI
+summary leaves the ID unchanged while the exported items stay the same. The
+same build writes the export during AI outages.
+
 ## Tests
 
 The test suite is offline: fake feeds, fake HTTP and a fake LLM provider

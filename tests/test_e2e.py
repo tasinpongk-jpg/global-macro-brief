@@ -1,6 +1,7 @@
 """Whole-pipeline tests with fake feeds, fake HTTP and a fake LLM provider."""
 from __future__ import annotations
 
+import json
 import unittest
 from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
@@ -18,10 +19,11 @@ from src.summarize import ProviderPool
 from tests.fakes import FakeLLM, TempDir, http_response, make_config, response, rss
 
 NOW = datetime.now(UTC)
+FEED_DAY = NOW.replace(hour=12, minute=0, second=0, microsecond=0) - timedelta(days=1)
 
 
 def _date(hours_ago: float) -> str:
-    return format_datetime(NOW - timedelta(hours=hours_ago))
+    return format_datetime(FEED_DAY - timedelta(hours=hours_ago))
 
 
 TITLES = ["Brent crude jumps on supply outage", "Fed signals patience on rates",
@@ -39,7 +41,9 @@ FEED_ITEMS.append({"title": "Old story", "link": "https://example.com/old",
 
 def fake_get(url, **kwargs):
     if url.endswith("/feed.xml"):
-        return http_response(rss(FEED_ITEMS))
+        return http_response(rss(FEED_ITEMS).replace(
+            b"<title>Fake</title>", b"<title>Fake</title><language>en-US</language>",
+        ))
     if url.endswith("/broken.xml"):
         return http_response(b"<html>blocked</html>", status=429, ctype="text/html")
     raise AssertionError(f"unexpected fetch {url}")
@@ -76,6 +80,18 @@ class PipelineEndToEndTests(unittest.TestCase):
             index = (cfg.site_dir / "index.html").read_text(encoding="utf-8")
             self.assertIn("Summary: Gold hits record high", index)
             self.assertIn("Risk-on as the dollar firms.", index)
+            path = cfg.site_dir / "data/global-intel.json"
+            first = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(first["items"], [
+                {"title": t, "url": FEED_ITEMS[i]["link"], "source": "Fake", "language": "en",
+                 "published": (FEED_DAY - timedelta(hours=i + 1)).isoformat()}
+                for i, t in enumerate(TITLES)
+            ])
+            conn.execute("UPDATE articles SET headline = 'Different AI headline', importance = 1")
+            render_site(conn, cfg)
+            second = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(second["editionId"], first["editionId"])
+            self.assertEqual(second["items"], first["items"])
             # raw text is dropped once summarized (and for the stale article)
             left = conn.execute(
                 "SELECT COUNT(*) FROM articles WHERE raw_text IS NOT NULL").fetchone()[0]
@@ -120,16 +136,18 @@ class PipelineEndToEndTests(unittest.TestCase):
 class StrictExitTests(unittest.TestCase):
     def test_strict_exits_3_on_outage(self) -> None:
         with TempDir() as root:
-            cfg = make_config(root)
-            outage = pipeline.SummaryStats(selected=5, summarized=0, exhausted=True)
+            cfg = make_config(root, feeds=[Feed("Fake", "https://f.test/feed.xml")], llm_chain=[])
             with patch.object(pipeline, "load_config", return_value=cfg), \
-                    patch.object(pipeline, "ingest_all"), \
-                    patch.object(pipeline, "generate_digest"), \
-                    patch.object(pipeline, "summarize_pending", return_value=outage), \
+                    patch("src.net._session.get", side_effect=fake_get), \
+                    patch.object(summarize.litellm, "completion") as completion, \
                     patch("sys.argv", ["pipeline", "--strict"]), \
                     self.assertRaises(SystemExit) as cm:
                 pipeline.main()
             self.assertEqual(cm.exception.code, 3)
+            completion.assert_not_called()
+            path = cfg.site_dir / "data/global-intel.json"
+            export = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual([item["title"] for item in export["items"]], TITLES)
             self.assertTrue((cfg.site_dir / "index.html").exists())  # rendered first
 
 
