@@ -1,10 +1,9 @@
 # Daily Global-Macro Brief
 
-A free, automated daily news scraper → summarizer → static reading site, built on
-the "Meridian pattern": **RSS-first ingestion → SQLite dedup → LLM summarization
-(MiniMax-M2 + Gemini/Mistral fallbacks via LiteLLM) → Jinja2 static site →
-Cloudflare Pages on a GitHub Actions cron.** See `Free Daily Global-Macro News Scraper and Summarizer_
-Architecture and Toolchain Guide.md` for the full research behind these choices.
+GitHub Actions fetches publisher RSS, deduplicates headlines in SQLite,
+and renders a reading site and JSON feed for Cloudflare Pages. Scheduled
+and manually triggered builds skip article summaries and the daily mood line.
+Local builds can opt into both via LiteLLM.
 
 ## What it does
 
@@ -14,9 +13,9 @@ Architecture and Toolchain Guide.md` for the full research behind these choices.
    User-Agent (`src/net.py`), then parsed with `feedparser`. Feeds that return
    nothing are reported as a "Feed health" warning on the Actions run.
 2. **Dedup** — SQLite, keyed on URL hash + normalized title (near-dup detection).
-3. **Extract** — for thin RSS teasers, fetch the page (only if robots.txt allows
+3. **Optional extraction (local builds)** — for thin RSS teasers, fetch the page (only if robots.txt allows
    it) and extract full text via a `trafilatura` → `readability-lxml` cascade.
-4. **Summarize** — LiteLLM calls the `LLM_CHAIN` (default MiniMax-M2 → Gemini
+4. **Optional summarization (local builds)** — LiteLLM calls the `LLM_CHAIN` (default MiniMax-M2 → Gemini
    2.5 Flash → Mistral Small → local Ollama), 5 articles per request and several
    requests in parallel. Output is structured JSON per article:
    `{headline, bullets[1-5], topic, sentiment, importance(1-5), instruments[]}`.
@@ -48,11 +47,10 @@ python -m venv .venv
 pip install --only-binary=litellm -r requirements.txt
 cp .env.example .env          # then paste your MINIMAX_API_KEY (and/or GEMINI_API_KEY)
 
-# Dry run — ingest + render only, no LLM/API key needed (stories appear by
-# feed title, marked "summary pending"):
+# Headline-only build, matching GitHub Actions. No LLM keys needed.
 python -m src.pipeline --no-summarize
 
-# Full run (needs a key in .env):
+# Optional local summaries (requires an available provider):
 python -m src.pipeline
 
 # Re-render the site from the existing DB:
@@ -129,16 +127,13 @@ differ.)
 2. Create a Cloudflare Pages project named `macro-brief` (or edit the name in
    `.github/workflows/daily.yml`).
 3. Add repo **Secrets** (Settings → Secrets and variables → Actions):
-   - `MINIMAX_API_KEY` (primary) and optionally `GEMINI_API_KEY`, `MISTRAL_API_KEY`
    - `CLOUDFLARE_API_TOKEN` (Pages:Edit permission)
    - `CLOUDFLARE_ACCOUNT_ID`
 4. The cron is set for 23:00 UTC (≈ 06:00 Bangkok); GitHub usually starts
    scheduled runs 1–3 hours late. Trigger manually anytime via the **Run
    workflow** button (workflow_dispatch).
-5. Failure alerts: if a daily run fails — including a summarization outage where
-   no article could be summarized (`--strict`) — the workflow opens (or comments
-   on) a `daily-run-failure` issue, and closes it after the next good run. The
-   site is still deployed with title-only cards in that case.
+5. Failed runs open or update a `daily-run-failure` issue. The next successful
+   run closes it.
 
 The SQLite DB persists across runs three ways, in order of use: a fast **Actions
 cache**, a durable **`db-snapshot` branch** (auto-restored if the cache is ever

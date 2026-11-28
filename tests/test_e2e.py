@@ -224,6 +224,23 @@ class PublicationProvenanceTests(unittest.TestCase):
         ])
 
 
+class HeadlineOnlyTests(unittest.TestCase):
+    def test_no_summarize_exports_headlines_without_an_llm(self) -> None:
+        with TempDir() as root:
+            cfg = make_config(root, feeds=[Feed("Fake", "https://f.test/feed.xml")],
+                              llm_chain=["minimax/MiniMax-M2"])
+            with patch.object(pipeline, "load_config", return_value=cfg), \
+                    patch("src.net._session.get", side_effect=fake_get), \
+                    patch.object(pipeline, "ProviderPool") as providers, \
+                    patch("sys.argv", ["pipeline", "--no-summarize"]):
+                pipeline.main()
+            providers.assert_not_called()
+            path = cfg.site_dir / "data/global-intel.json"
+            export = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual([item["title"] for item in export["items"]], TITLES)
+            self.assertTrue((cfg.site_dir / "index.html").exists())
+
+
 class StrictExitTests(unittest.TestCase):
     def test_strict_exits_3_on_outage(self) -> None:
         with TempDir() as root:
