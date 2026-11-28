@@ -73,7 +73,10 @@ The export keeps up to 500 headlines from the previous seven days, ordered by
 publication time, then URL, both descending. Entries with missing, invalid,
 future, or stale publication timestamps, invalid or non-HTTPS URLs, or blank or
 oversized fields are excluded. Limits are 512 characters for titles, 128 for
-sources, and 2,048 for URLs. There is no fetch-time fallback for missing dates.
+sources, and 2,048 for URLs. The original publication metadata must include a
+full date, time with seconds, and known timezone. Updated, created, and fetch
+times do not qualify. Existing database rows are eligible once the same feed
+repeats the stored title and link with a qualifying publication timestamp.
 
 The edition ID is the lowercase SHA-256 of the items array encoded as compact
 UTF-8 JSON with sorted object keys and literal Unicode. A new render time or AI

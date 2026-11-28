@@ -171,8 +171,8 @@ def render_site(conn: sqlite3.Connection, cfg: Config, days: int = 21) -> None:
 
     # Every article is rendered; unsummarized ones appear as title-only cards.
     rows = conn.execute(
-        """SELECT id, url, title, source, language, feed_topic, published, fetched_at,
-                  summarized, headline, bullets, topic, sentiment, importance,
+        """SELECT id, url, title, source, language, feed_topic, published, export_published,
+                  fetched_at, summarized, headline, bullets, topic, sentiment, importance,
                   instruments
            FROM articles
            ORDER BY COALESCE(published, fetched_at) DESC"""

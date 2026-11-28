@@ -36,8 +36,8 @@ class GlobalIntelTests(unittest.TestCase):
                 rows = items + [{**items[0], "url": f"https://z.test/{i}", **fields}
                                 for i, fields in enumerate(invalid)]
                 conn.executemany(
-                    "INSERT INTO articles (url_hash, title, source, url, published, language, "
-                    "fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO articles (url_hash, title, source, url, export_published, "
+                    "language, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
                     [(str(i), row["title"], row["source"], row["url"], row["published"],
                       row["language"], NOW.isoformat()) for i, row in enumerate(rows)],
                 )

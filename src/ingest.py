@@ -6,6 +6,7 @@ import logging
 import re
 import sqlite3
 from datetime import UTC, datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 
 import feedparser
 import requests
@@ -18,6 +19,14 @@ log = logging.getLogger(__name__)
 
 _WS = re.compile(r"\s+")
 _PUNCT = re.compile(r"[^\w\s]", re.UNICODE)
+_ISO_PUBLICATION = re.compile(
+    r"[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt ][0-9]{2}:[0-9]{2}:[0-9]{2}"
+    r"(?:\.[0-9]+)?(?:[Zz]|[+-](?:[01][0-9]|2[0-3]):?[0-5][0-9])"
+)
+_RFC_PUBLICATION = re.compile(
+    r"(?:[A-Za-z]{3}, +)?[0-9]{1,2} +[A-Za-z]{3} +[0-9]{4} +"
+    r"[0-9]{2}:[0-9]{2}:[0-9]{2} +(?:[A-Za-z]{1,3}|[+-](?:[01][0-9]|2[0-3])[0-5][0-9])"
+)
 
 # dateutil intentionally does not guess ambiguous timezone abbreviations. RSS
 # feeds still use them frequently (EIA emits literal "EST" year-round), so map
@@ -69,6 +78,23 @@ def _published_iso(entry) -> str | None:
             return datetime(*entry.published_parsed[:6], tzinfo=UTC).isoformat()
         except Exception:  # noqa: BLE001
             pass
+    return None
+
+
+def _export_published_iso(entry) -> str | None:
+    """Parse only explicit publication metadata with a full date, time and known zone."""
+    value = (entry.get("published") or "").strip()
+    try:
+        if _ISO_PUBLICATION.fullmatch(value) and not value.endswith(("-00:00", "-0000")):
+            published = datetime.fromisoformat(value.upper())
+        elif _RFC_PUBLICATION.fullmatch(value):
+            published = parsedate_to_datetime(value)
+        else:
+            return None
+        if published.tzinfo is not None:
+            return published.astimezone(UTC).isoformat()
+    except (ValueError, OverflowError):
+        pass
     return None
 
 
@@ -134,16 +160,26 @@ def ingest_feed(conn: sqlite3.Connection, feed: Feed) -> tuple[int, int]:
         uh = url_hash(url)
         title = (entry.get("title") or "").strip()
         norm = normalize_title(title)
+        export_published = _export_published_iso(entry)
+        language = _entry_language(entry, parsed.feed)
         if _is_dup(conn, uh, norm):
+            if export_published is not None:
+                # Recover provenance only when the same feed repeats the stored headline and link.
+                conn.execute(
+                    """UPDATE articles SET export_published = ?, language = COALESCE(language, ?)
+                       WHERE url_hash = ? AND url = ? AND title = ? AND source = ?
+                         AND export_published IS NULL""",
+                    (export_published, language, uh, url, title, feed.name),
+                )
             continue
         try:
             conn.execute(
                 """INSERT INTO articles
                    (url_hash, norm_title, url, title, source, language, feed_topic,
-                    published, fetched_at, raw_text, summarized)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,0)""",
-                (uh, norm, url, title, feed.name, _entry_language(entry, parsed.feed),
-                 feed.topic, _published_iso(entry), _now_iso(), _entry_text(entry)),
+                    published, export_published, fetched_at, raw_text, summarized)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,0)""",
+                (uh, norm, url, title, feed.name, language, feed.topic,
+                 _published_iso(entry), export_published, _now_iso(), _entry_text(entry)),
             )
             added += 1
         except sqlite3.IntegrityError:

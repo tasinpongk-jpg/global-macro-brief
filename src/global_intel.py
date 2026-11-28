@@ -37,7 +37,7 @@ def write_global_intel(rows: Iterable[sqlite3.Row], site_dir: Path, now: datetim
                 or not _is_https_url(url)):
             continue
         try:
-            published = datetime.fromisoformat(row["published"] or "")
+            published = datetime.fromisoformat(row["export_published"] or "")
             if published.tzinfo is None:
                 continue
             published = published.astimezone(UTC)

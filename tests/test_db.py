@@ -19,17 +19,20 @@ def _insert(conn, i: int, summarized: int, text: str) -> None:
 
 
 class MigrationTests(unittest.TestCase):
-    def test_adds_optional_language_to_existing_articles(self) -> None:
+    def test_does_not_invent_export_metadata_for_existing_articles(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "t.db"
             conn = init_db(path)
             conn.execute("ALTER TABLE articles DROP COLUMN language")
+            conn.execute("ALTER TABLE articles DROP COLUMN export_published")
             _insert(conn, 1, summarized=0, text="body")
             conn.commit()
             conn.close()
             conn = init_db(path)
-            row = conn.execute("SELECT title, language FROM articles").fetchone()
-            self.assertEqual(tuple(row), ("T1", None))
+            row = conn.execute(
+                "SELECT published, export_published, language FROM articles"
+            ).fetchone()
+            self.assertEqual(tuple(row), ("2026-10-01T00:00:00+00:00", None, None))
             conn.close()
 
 

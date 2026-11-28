@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import unittest
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from email.utils import format_datetime
 from unittest.mock import patch
 
@@ -12,7 +12,7 @@ import litellm
 from src import pipeline, summarize
 from src.config import Feed
 from src.digest import generate_digest
-from src.ingest import ingest_all
+from src.ingest import ingest_all, ingest_feed, url_hash
 from src.models import compact_db, init_db
 from src.render import render_site
 from src.summarize import ProviderPool
@@ -130,6 +130,67 @@ class PipelineEndToEndTests(unittest.TestCase):
                     pipeline.summarize_pending(conn, cfg, ProviderPool(cfg.llm_chain))
             row = conn.execute("SELECT attempts, summarized FROM articles").fetchone()
             self.assertEqual((row["attempts"], row["summarized"]), (2, 0))
+            conn.close()
+
+
+class PublicationProvenanceTests(unittest.TestCase):
+    def test_exports_only_full_original_publication_dates(self) -> None:
+        timestamp = _date(1)
+        atom_published = FEED_DAY - timedelta(hours=2)
+        atom_timestamp = atom_published.astimezone(timezone(timedelta(hours=7))).isoformat()
+        site_timestamp = atom_published.isoformat()
+        old_display = (FEED_DAY - timedelta(hours=3)).isoformat()
+        articles = [
+            ("rss", f"<pubDate>{timestamp}</pubDate>"),
+            ("iso", f"<published>{atom_timestamp}</published>"),
+            ("updated", f"<updated>{atom_timestamp}</updated>"),
+            ("created", f"<created>{atom_timestamp}</created>"),
+            ("invalid", f"<pubDate>invalid</pubDate><updated>{atom_timestamp}</updated>"),
+            ("impossible-day", "<pubDate>2026-11-31T00:00:00Z</pubDate>"
+                               f"<updated>{atom_timestamp}</updated>"),
+            ("partial", f"<pubDate>{FEED_DAY:%Y-%m-%d}</pubDate>"
+                        f"<created>{atom_timestamp}</created>"),
+            ("no-zone", f"<pubDate>{FEED_DAY:%Y-%m-%dT%H:%M:%S}</pubDate>"),
+            ("unknown-zone", f"<pubDate>{FEED_DAY:%Y-%m-%dT%H:%M:%S}-00:00</pubDate>"),
+            ("repeat", f"<pubDate>{timestamp}</pubDate>"),
+            ("other-source", f"<pubDate>{timestamp}</pubDate>"),
+            ("changed-title", f"<pubDate>{timestamp}</pubDate>"),
+        ]
+        entries = "".join(
+            f"<item><title>{name}</title><link>https://a.test/{name}</link>{dates}</item>"
+            for name, dates in articles
+        )
+        body = f"<rss version='2.0'><channel><title>Fake</title>{entries}</channel></rss>".encode()
+        feed = Feed("Fake", "https://a.test/feed.xml")
+        with TempDir() as root:
+            cfg = make_config(root)
+            conn = init_db(cfg.db_path)
+            conn.executemany(
+                "INSERT INTO articles (url_hash, url, title, source, published, fetched_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                [(url_hash(f"https://a.test/{name}"), f"https://a.test/{name}",
+                  "earlier title" if name == "changed-title" else name, source,
+                  old_display, old_display)
+                 for name, source in [("repeat", "Fake"), ("other-source", "Different"),
+                                      ("unobserved", "Fake"), ("changed-title", "Fake")]],
+            )
+            with patch("src.net._session.get", return_value=http_response(body)):
+                self.assertEqual(ingest_feed(conn, feed), (9, 12))
+            render_site(conn, cfg)
+            path = cfg.site_dir / "data/global-intel.json"
+            export = json.loads(path.read_text(encoding="utf-8"))
+            timestamps = {item["title"]: item["published"] for item in export["items"]}
+            self.assertEqual(timestamps, {
+                "rss": (FEED_DAY - timedelta(hours=1)).isoformat(),
+                "iso": site_timestamp,
+                "repeat": (FEED_DAY - timedelta(hours=1)).isoformat(),
+            })
+            stored = dict(conn.execute("SELECT title, published FROM articles"))
+            self.assertEqual(stored["updated"], site_timestamp)
+            self.assertEqual(stored["created"], site_timestamp)
+            self.assertEqual(stored["invalid"], site_timestamp)
+            self.assertEqual(stored["repeat"], old_display)
+            self.assertIsNotNone(stored["partial"])
             conn.close()
 
 
